@@ -2,10 +2,12 @@ package com.architecturoverse.client.screen;
 
 import com.architecturoverse.citizen.CitizenJob;
 import com.architecturoverse.citizen.CitizenMode;
+import com.architecturoverse.kingdom.BuildOrder;
 import com.architecturoverse.network.CitizenCommandPayload;
 import com.architecturoverse.network.KingdomSnapshotPayload;
 import com.architecturoverse.network.KingdomSnapshotPayload.CitizenInfo;
 import com.architecturoverse.network.KingdomSnapshotPayload.VillageInfo;
+import com.architecturoverse.network.VillageOrderPayload;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -81,7 +83,7 @@ public class KingdomScreen extends Screen {
 		addVillageButton(x, y, ALL_VILLAGES, Component.translatable("screen.architecturoverse.all_villages", data.citizens().size()));
 		y += ROW_HEIGHT;
 		for (VillageInfo village : data.villages()) {
-			if (y > top() + PANEL_HEIGHT - 50) {
+			if (y > top() + PANEL_HEIGHT - 96) {
 				break;
 			}
 			addVillageButton(x, y, village.id(), Component.translatable("screen.architecturoverse.village", village.id(), village.population()));
@@ -113,6 +115,23 @@ public class KingdomScreen extends Screen {
 		next.active = page < pageCount() - 1;
 		addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
 			.bounds(left() + PANEL_WIDTH - 88, bottom, 80, 20).build());
+
+		selectedVillageInfo().ifPresent(village -> {
+			addBuildButton(x, bottom - 22, village, BuildOrder.WAREHOUSE, village.warehouse());
+			addBuildButton(x, bottom, village, BuildOrder.MINE, false);
+		});
+	}
+
+	/** "Build a warehouse" / "Found a mine": the order goes to the village builders. */
+	private void addBuildButton(int x, int y, VillageInfo village, BuildOrder order, boolean alreadyBuilt) {
+		boolean queued = village.orders().contains(order.ordinal());
+		String key = queued ? "screen.architecturoverse.order_in_progress." : "screen.architecturoverse.order.";
+		Button button = addRenderableWidget(Button.builder(Component.translatable(key + order.name().toLowerCase()),
+				b -> ClientPlayNetworking.send(new VillageOrderPayload(village.id(), order.ordinal())))
+			.bounds(x, y, VILLAGE_COLUMN, 20)
+			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.order_hint." + order.name().toLowerCase())))
+			.build());
+		button.active = !queued && !alreadyBuilt;
 	}
 
 	private void addVillageButton(int x, int y, int villageId, Component label) {

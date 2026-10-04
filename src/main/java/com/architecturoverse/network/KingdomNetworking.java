@@ -4,11 +4,13 @@ import com.architecturoverse.block.WarehouseBlockEntity;
 import com.architecturoverse.citizen.CitizenEntity;
 import com.architecturoverse.citizen.CitizenJob;
 import com.architecturoverse.citizen.CitizenMode;
+import com.architecturoverse.kingdom.BuildOrder;
 import com.architecturoverse.kingdom.CitizenRecord;
 import com.architecturoverse.kingdom.ClaimedVillage;
 import com.architecturoverse.kingdom.Kingdom;
 import com.architecturoverse.kingdom.KingdomManager;
 import com.architecturoverse.kingdom.MineSite;
+import com.architecturoverse.village.VillageOrders;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,7 @@ public final class KingdomNetworking {
 		PayloadTypeRegistry.clientboundPlay().register(KingdomSnapshotPayload.TYPE, KingdomSnapshotPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(RequestKingdomPayload.TYPE, RequestKingdomPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(CitizenCommandPayload.TYPE, CitizenCommandPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(VillageOrderPayload.TYPE, VillageOrderPayload.CODEC);
 
 		ServerPlayNetworking.registerGlobalReceiver(RequestKingdomPayload.TYPE,
 			(payload, context) -> openKingdomScreen(context.player(), null));
@@ -43,6 +46,11 @@ public final class KingdomNetworking {
 			CitizenMode mode = payload.mode() >= 0 ? CitizenMode.byId(payload.mode()) : null;
 			if (commandCitizen(context.player(), payload.citizen(), job, mode)) {
 				sendSnapshot(context.player(), payload.citizen());
+			}
+		});
+		ServerPlayNetworking.registerGlobalReceiver(VillageOrderPayload.TYPE, (payload, context) -> {
+			if (VillageOrders.order(context.player(), payload.villageId(), BuildOrder.byId(payload.order()))) {
+				sendSnapshot(context.player(), null);
 			}
 		});
 	}
@@ -65,7 +73,7 @@ public final class KingdomNetworking {
 		List<KingdomSnapshotPayload.VillageInfo> villages = kingdom.villages().stream()
 			.map(v -> new KingdomSnapshotPayload.VillageInfo(v.id(), v.dimension().identifier().toString(), v.center(),
 				kingdom.population(v.id()), v.warehouse().isPresent(), v.mine().map(MineSite::progress).orElse(-1),
-				warehouseStock(player.level().getServer(), v)))
+				warehouseStock(player.level().getServer(), v), v.orders().stream().map(BuildOrder::ordinal).toList()))
 			.toList();
 		List<KingdomSnapshotPayload.CitizenInfo> citizens = kingdom.citizens().stream()
 			.map(c -> new KingdomSnapshotPayload.CitizenInfo(c.uuid(), c.name(), c.job().ordinal(), c.mode().ordinal(), c.villageId()))

@@ -2,6 +2,7 @@ package com.architecturoverse.citizen;
 
 import com.architecturoverse.citizen.goal.FollowRulerGoal;
 import com.architecturoverse.citizen.goal.WorkGoal;
+import com.architecturoverse.citizen.work.BuilderAI;
 import com.architecturoverse.citizen.work.FarmerAI;
 import com.architecturoverse.citizen.work.LumberjackAI;
 import com.architecturoverse.citizen.work.MinerAI;
@@ -233,6 +234,7 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 				case LUMBERJACK -> new LumberjackAI(this);
 				case MINER -> new MinerAI(this);
 				case FARMER -> new FarmerAI(this);
+				case BUILDER -> new BuilderAI(this);
 				case UNEMPLOYED, SOLDIER -> null;
 			};
 		}

@@ -2,13 +2,20 @@ package com.architecturoverse.kingdom;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
-/** A village that belongs to a kingdom. The center is the bell the ruler rang with the scepter. */
-public record ClaimedVillage(int id, ResourceKey<Level> dimension, BlockPos center, Optional<BlockPos> warehouse, Optional<MineSite> mine) {
+/**
+ * A village that belongs to a kingdom. The center is the bell the ruler rang with the scepter.
+ * {@code orders} is the builders' to-do list, oldest first.
+ */
+public record ClaimedVillage(
+	int id, ResourceKey<Level> dimension, BlockPos center, Optional<BlockPos> warehouse, Optional<MineSite> mine, List<BuildOrder> orders
+) {
 	/** Villagers, golems and citizens within this horizontal distance of the bell belong to the village. */
 	public static final int RADIUS = 48;
 	/** Mines may be placed this far from the village center, since good stone is rarely inside the village. */
@@ -19,11 +26,16 @@ public record ClaimedVillage(int id, ResourceKey<Level> dimension, BlockPos cent
 		Level.RESOURCE_KEY_CODEC.fieldOf("dimension").forGetter(ClaimedVillage::dimension),
 		BlockPos.CODEC.fieldOf("center").forGetter(ClaimedVillage::center),
 		BlockPos.CODEC.optionalFieldOf("warehouse").forGetter(ClaimedVillage::warehouse),
-		MineSite.CODEC.optionalFieldOf("mine").forGetter(ClaimedVillage::mine)
+		MineSite.CODEC.optionalFieldOf("mine").forGetter(ClaimedVillage::mine),
+		BuildOrder.CODEC.listOf().optionalFieldOf("orders", List.of()).forGetter(ClaimedVillage::orders)
 	).apply(i, ClaimedVillage::new));
 
+	public ClaimedVillage {
+		orders = List.copyOf(orders);
+	}
+
 	public ClaimedVillage(int id, ResourceKey<Level> dimension, BlockPos center) {
-		this(id, dimension, center, Optional.empty(), Optional.empty());
+		this(id, dimension, center, Optional.empty(), Optional.empty(), List.of());
 	}
 
 	/** True if the position is in the same dimension and within {@code radius} blocks horizontally. */
@@ -34,10 +46,22 @@ public record ClaimedVillage(int id, ResourceKey<Level> dimension, BlockPos cent
 	}
 
 	public ClaimedVillage withWarehouse(Optional<BlockPos> newWarehouse) {
-		return new ClaimedVillage(id, dimension, center, newWarehouse, mine);
+		return new ClaimedVillage(id, dimension, center, newWarehouse, mine, orders);
 	}
 
 	public ClaimedVillage withMine(Optional<MineSite> newMine) {
-		return new ClaimedVillage(id, dimension, center, warehouse, newMine);
+		return new ClaimedVillage(id, dimension, center, warehouse, newMine, orders);
+	}
+
+	public ClaimedVillage withOrder(BuildOrder order) {
+		List<BuildOrder> newOrders = new ArrayList<>(orders);
+		newOrders.add(order);
+		return new ClaimedVillage(id, dimension, center, warehouse, mine, newOrders);
+	}
+
+	public ClaimedVillage withoutOrder(BuildOrder order) {
+		List<BuildOrder> newOrders = new ArrayList<>(orders);
+		newOrders.remove(order);
+		return new ClaimedVillage(id, dimension, center, warehouse, mine, newOrders);
 	}
 }

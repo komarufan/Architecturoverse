@@ -95,7 +95,7 @@ public class LumberjackAI extends WorkerAI {
 
 	private void replant(BlockPos base) {
 		ServerLevel level = level();
-		if (logBlock == null || !level.getBlockState(base).isAir() || !level.getBlockState(base.below()).is(BlockTags.DIRT)) {
+		if (logBlock == null || !level.getBlockState(base).isAir() || !level.getBlockState(base.below()).is(BlockTags.SUBSTRATE_OVERWORLD)) {
 			return;
 		}
 		saplingFor(logBlock).ifPresent(sapling -> level.setBlockAndUpdate(base, sapling.defaultBlockState()));
@@ -147,7 +147,7 @@ public class LumberjackAI extends WorkerAI {
 		for (int i = 0; i < 40 && level.getBlockState(pos.below()).is(BlockTags.LOGS); i++) {
 			pos = pos.below();
 		}
-		return level.getBlockState(pos.below()).is(BlockTags.DIRT) ? pos : null;
+		return level.getBlockState(pos.below()).is(BlockTags.SUBSTRATE_OVERWORLD) ? pos : null;
 	}
 
 	/** Village houses use logs too, but only trees have leaves that grew naturally. */
