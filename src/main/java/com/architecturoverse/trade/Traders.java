@@ -1,6 +1,7 @@
 package com.architecturoverse.trade;
 
 import com.architecturoverse.citizen.CitizenEntity;
+import com.architecturoverse.citizen.work.Walker;
 import com.architecturoverse.kingdom.ClaimedVillage;
 import com.architecturoverse.kingdom.KingdomManager;
 import com.architecturoverse.registry.ModEntities;
@@ -13,12 +14,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntitySpawnReason;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
 
 /** Calling the travelling merchant to a village, and setting the village soldiers on him. */
 public final class Traders {
-	private static final int ARRIVAL_DISTANCE = 40;
+	private static final int[] ARRIVAL_DISTANCES = {64, 48};
 	private static final double SEARCH_RADIUS = 160.0;
 
 	private Traders() {
@@ -90,20 +90,17 @@ public final class Traders {
 		return true;
 	}
 
-	/** A dry spot on the ground some way out of the village. */
+	/** A dry spot on the ground well out of the village (closer only if the far ground is not loaded). */
 	private static Optional<BlockPos> arrivalSpot(ServerLevel level, BlockPos center) {
 		double start = level.getRandom().nextDouble() * Math.PI * 2;
-		for (int i = 0; i < 12; i++) {
-			double angle = start + Math.PI * 2 * i / 12;
-			int x = center.getX() + (int) (Math.cos(angle) * ARRIVAL_DISTANCE);
-			int z = center.getZ() + (int) (Math.sin(angle) * ARRIVAL_DISTANCE);
-			BlockPos column = new BlockPos(x, center.getY(), z);
-			if (!level.isLoaded(column)) {
-				continue;
-			}
-			BlockPos ground = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
-			if (level.getBlockState(ground.below()).getFluidState().isEmpty() && level.getBlockState(ground).getFluidState().isEmpty()) {
-				return Optional.of(ground);
+		for (int distance : ARRIVAL_DISTANCES) {
+			for (int i = 0; i < 12; i++) {
+				double angle = start + Math.PI * 2 * i / 12;
+				Optional<BlockPos> ground = Walker.dryGround(level, center.getX() + (int) (Math.cos(angle) * distance),
+					center.getZ() + (int) (Math.sin(angle) * distance));
+				if (ground.isPresent()) {
+					return ground;
+				}
 			}
 		}
 		return Optional.empty();

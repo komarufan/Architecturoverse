@@ -11,7 +11,8 @@
 			"com.architecturoverse.test.BuilderGameTests",
 			"com.architecturoverse.test.StructureGameTests",
 			"com.architecturoverse.test.MilitaryGameTests",
-			"com.architecturoverse.test.TradeGameTests"
+			"com.architecturoverse.test.TradeGameTests",
+			"com.architecturoverse.test.JusticeGameTests"
 		]
 	},
 	"depends": {

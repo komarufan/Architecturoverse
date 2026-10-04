@@ -7,9 +7,12 @@ import com.architecturoverse.kingdom.Kingdom;
 import com.architecturoverse.kingdom.KingdomManager;
 import com.architecturoverse.registry.ModEntities;
 import com.architecturoverse.registry.ModItems;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -29,6 +32,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ringing a village bell with the scepter seizes the village. Its iron golems defend it:
@@ -37,6 +41,8 @@ import net.minecraft.world.phys.AABB;
 public final class CaptureHandler {
 	public static final int EMERALDS_PER_GOLEM = 5;
 	private static final String GOLEM_TAG_PREFIX = "architecturoverse.ruler.";
+
+	private static final Set<Villager> NEW_VILLAGERS = new HashSet<>();
 
 	private CaptureHandler() {
 	}
@@ -103,12 +109,7 @@ public final class CaptureHandler {
 
 		int sworn = 0;
 		for (Villager villager : villagers) {
-			String name = villager.hasCustomName() ? villager.getPlainTextName() : CitizenNames.random(level.getRandom());
-			CitizenEntity citizen = villager.convertTo(ModEntities.CITIZEN, ConversionParams.single(villager, false, false),
-				c -> c.swearLoyalty(player.getUUID(), village, villager.getVillagerData(), name));
-			if (citizen != null) {
-				manager.putCitizen(kingdom, citizen.toRecord());
-				level.sendParticles(ParticleTypes.HAPPY_VILLAGER, citizen.getX(), citizen.getY() + 1.0, citizen.getZ(), 10, 0.4, 0.6, 0.4, 0.0);
+			if (swear(level, kingdom, village, villager) != null) {
 				sworn++;
 			}
 		}
@@ -124,6 +125,47 @@ public final class CaptureHandler {
 				player.addItem(new ItemStack(ModItems.RULER_BOOK));
 			}
 			player.sendSystemMessage(Component.translatable("message.architecturoverse.first_village").withStyle(ChatFormatting.GREEN));
+		}
+	}
+
+	/** Turns a villager into a citizen of the kingdom's village. */
+	private static @Nullable CitizenEntity swear(ServerLevel level, Kingdom kingdom, ClaimedVillage village, Villager villager) {
+		String name = villager.hasCustomName() ? villager.getPlainTextName() : CitizenNames.random(level.getRandom());
+		CitizenEntity citizen = villager.convertTo(ModEntities.CITIZEN, ConversionParams.single(villager, false, false),
+			c -> c.swearLoyalty(kingdom.owner(), village, villager.getVillagerData(), name));
+		if (citizen != null) {
+			KingdomManager.get(level.getServer()).putCitizen(kingdom, citizen.toRecord());
+			level.sendParticles(ParticleTypes.HAPPY_VILLAGER, citizen.getX(), citizen.getY() + 1.0, citizen.getZ(), 10, 0.4, 0.6, 0.4, 0.0);
+		}
+		return citizen;
+	}
+
+	/** Villagers that appear in a claimed village later (spawn eggs, births, wanderers) become citizens too. */
+	public static void watchNewVillagers() {
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
+			if (entity instanceof Villager villager) {
+				NEW_VILLAGERS.add(villager);
+			}
+		});
+	}
+
+	/** Called every second: swears in villagers that turned up in claimed villages. */
+	public static void swearInNewcomers() {
+		List<Villager> pending = List.copyOf(NEW_VILLAGERS);
+		NEW_VILLAGERS.clear();
+		for (Villager villager : pending) {
+			if (!villager.isAlive() || !(villager.level() instanceof ServerLevel level)) {
+				continue;
+			}
+			KingdomManager manager = KingdomManager.get(level.getServer());
+			manager.claimAt(level.dimension(), villager.blockPosition(), ClaimedVillage.RADIUS).ifPresent(claim -> {
+				CitizenEntity citizen = swear(level, claim.kingdom(), claim.village(), villager);
+				ServerPlayer ruler = level.getServer().getPlayerList().getPlayer(claim.kingdom().owner());
+				if (citizen != null && ruler != null) {
+					ruler.sendOverlayMessage(Component.translatable("message.architecturoverse.new_citizen", citizen.getDisplayName(),
+						claim.village().id()).withStyle(ChatFormatting.GREEN));
+				}
+			});
 		}
 	}
 

@@ -1,7 +1,11 @@
 package com.architecturoverse.citizen;
 
+import com.architecturoverse.citizen.goal.ArrestGoal;
+import com.architecturoverse.citizen.goal.EscortGoal;
 import com.architecturoverse.citizen.goal.ExecutionerGoal;
 import com.architecturoverse.citizen.goal.FollowRulerGoal;
+import com.architecturoverse.citizen.goal.HideGoal;
+import com.architecturoverse.citizen.goal.MessengerGoal;
 import com.architecturoverse.citizen.goal.PrisonerGoal;
 import com.architecturoverse.citizen.goal.SleepGoal;
 import com.architecturoverse.citizen.goal.SoldierGoal;
@@ -19,12 +23,13 @@ import com.architecturoverse.kingdom.Kingdom;
 import com.architecturoverse.kingdom.KingdomManager;
 import com.architecturoverse.kingdom.RulerNotifier;
 import com.architecturoverse.network.KingdomNetworking;
+import com.architecturoverse.village.Rebellions;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -33,8 +38,8 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -79,6 +84,8 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.FLOAT);
 	private static final EntityDataAccessor<Boolean> DATA_RESTING =
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.BOOLEAN);
+	private static final EntityDataAccessor<Integer> DATA_STATUS =
+		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.INT);
 	public static final float MAX_ENERGY = 100.0F;
 	/** One cell of the energy bar: a small square (U+25AA). */
 	private static final String ENERGY_CELL = "▪";
@@ -87,13 +94,19 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 	/** Sleeping in a bed restores full energy in about a minute. */
 	private static final float RECOVER_PER_TICK = MAX_ENERGY / (20 * 60);
 	public static final int INVENTORY_SIZE = 12;
+	private static final int ESCAPE_WATER_TICKS = 200;
+	/** Rebels below this share of their health may give up. */
+	private static final float SURRENDER_HEALTH = 0.3F;
 
 	private @Nullable UUID ruler;
 	private int villageId = -1;
 	private boolean syncedWithKingdom;
-	private boolean condemned;
+	/** For the condemned: the messenger has handed over the sentence. */
+	private boolean noticeReceived;
+	/** For prisoners: which prison cell (0-based) is theirs. */
+	private int prisonCell = -1;
+	private boolean triedToSurrender;
 	private int ticksInWater;
-	private static final int ESCAPE_WATER_TICKS = 200;
 	private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
 	private final Walker walker = new Walker(this);
 	private @Nullable WorkerAI workerAI;
@@ -121,61 +134,74 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		entityData.define(DATA_MODE, CitizenMode.WORK.ordinal());
 		entityData.define(DATA_ENERGY, MAX_ENERGY);
 		entityData.define(DATA_RESTING, false);
+		entityData.define(DATA_STATUS, CitizenStatus.FREE.ordinal());
 	}
 
 	@Override
 	protected void registerGoals() {
 		this.goalSelector.addGoal(0, new FloatGoal(this));
+		this.goalSelector.addGoal(0, new PrisonerGoal(this));
+		this.goalSelector.addGoal(0, new ArrestGoal(this));
 		this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 0.8, true) {
 			@Override
 			public boolean canUse() {
-				return isSoldier() && super.canUse();
+				return isFighter() && super.canUse();
 			}
 
 			@Override
 			public boolean canContinueToUse() {
-				return isSoldier() && super.canContinueToUse();
+				return isFighter() && super.canContinueToUse();
 			}
 		});
 		this.goalSelector.addGoal(1, new PanicGoal(this, 0.75) {
 			@Override
 			public boolean canUse() {
-				return !isSoldier() && !condemned && super.canUse();
+				return !isSoldier() && getStatus() == CitizenStatus.FREE && super.canUse();
 			}
 		});
-		this.goalSelector.addGoal(0, new PrisonerGoal(this));
 		this.goalSelector.addGoal(1, new SleepGoal(this));
 		this.goalSelector.addGoal(1, new ExecutionerGoal(this));
+		this.goalSelector.addGoal(1, new EscortGoal(this));
+		this.goalSelector.addGoal(1, new HideGoal(this));
 		this.goalSelector.addGoal(2, new FollowRulerGoal(this, 0.7, 5.0F, 24.0F));
 		this.goalSelector.addGoal(3, new WorkGoal(this));
 		this.goalSelector.addGoal(3, new SoldierGoal(this));
+		this.goalSelector.addGoal(3, new MessengerGoal(this));
 		this.goalSelector.addGoal(3, new OpenDoorGoal(this, true));
 		this.goalSelector.addGoal(4, new MoveTowardsRestrictionGoal(this, 0.6) {
 			@Override
 			public boolean canUse() {
-				return getMode() == CitizenMode.WORK && super.canUse();
+				return getMode() == CitizenMode.WORK && !getStatus().isDetained() && super.canUse();
 			}
 		});
 		this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.5) {
 			@Override
 			public boolean canUse() {
-				return getMode() == CitizenMode.WORK && super.canUse();
+				return getMode() == CitizenMode.WORK && !getStatus().isDetained() && super.canUse();
 			}
 		});
 		this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
 		this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
 
-		this.targetSelector.addGoal(1, new HurtByTargetGoal(this, CitizenEntity.class) {
+		this.targetSelector.addGoal(1, new HurtByTargetGoal(this) {
+			@Override
+			public boolean canUse() {
+				return isFighter() && super.canUse();
+			}
+		});
+		this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, false,
+			(target, level) -> isSoldier() && getStatus() == CitizenStatus.FREE
+				&& (target instanceof Enemy || target instanceof CitizenEntity other && isRebelOfSameRuler(other))) {
 			@Override
 			public boolean canUse() {
 				return isSoldier() && super.canUse();
 			}
 		});
-		this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, false,
-			(target, level) -> isSoldier() && target instanceof Enemy) {
+		this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, false,
+			(target, level) -> getStatus() == CitizenStatus.REBEL && isRebelTarget(target)) {
 			@Override
 			public boolean canUse() {
-				return isSoldier() && super.canUse();
+				return getStatus() == CitizenStatus.REBEL && super.canUse();
 			}
 		});
 	}
@@ -190,22 +216,89 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		return CitizenMode.byId(this.entityData.get(DATA_MODE));
 	}
 
-	// ---- sentence ----------------------------------------------------------------------------
-
-	/** Sentenced to death: walks into the prison cell of the military base and waits there. */
-	public boolean isCondemned() {
-		return condemned;
+	public CitizenStatus getStatus() {
+		return CitizenStatus.byId(this.entityData.get(DATA_STATUS));
 	}
 
-	public void setCondemned(boolean condemned) {
-		this.condemned = condemned;
-		if (condemned) {
+	public boolean isSoldier() {
+		return getJob() == CitizenJob.SOLDIER && getStatus() == CitizenStatus.FREE;
+	}
+
+	/** Soldiers on duty and rebels fight. */
+	public boolean isFighter() {
+		return isSoldier() || getStatus() == CitizenStatus.REBEL;
+	}
+
+	private boolean isRebelOfSameRuler(CitizenEntity other) {
+		return other.getStatus() == CitizenStatus.REBEL && ruler != null && ruler.equals(other.ruler);
+	}
+
+	/** Rebels go for the ruler and for the ruler's soldiers. */
+	private boolean isRebelTarget(LivingEntity target) {
+		if (target instanceof Player player) {
+			return player.getUUID().equals(ruler);
+		}
+		return target instanceof CitizenEntity other && other.isSoldier() && ruler != null && ruler.equals(other.ruler);
+	}
+
+	// ---- sentence ----------------------------------------------------------------------------
+
+	public boolean isCondemned() {
+		return getStatus() == CitizenStatus.CONDEMNED;
+	}
+
+	public void setStatus(CitizenStatus status) {
+		this.entityData.set(DATA_STATUS, status.ordinal());
+		if (status != CitizenStatus.CONDEMNED) {
+			noticeReceived = false;
+		}
+		if (status != CitizenStatus.ARRESTED && status != CitizenStatus.IMPRISONED) {
+			prisonCell = -1;
+		}
+		if (status != CitizenStatus.FREE) {
 			applyMode(CitizenMode.WORK);
 			this.entityData.set(DATA_RESTING, false);
 			if (isSleeping()) {
 				stopSleeping();
 			}
+			if (workerAI != null) {
+				workerAI.stop();
+			}
 		}
+		if (status == CitizenStatus.FREE) {
+			triedToSurrender = false;
+			setTarget(null);
+		}
+	}
+
+	/** The condemned waits for the messenger before walking to the military base. */
+	public boolean hasNotice() {
+		return noticeReceived;
+	}
+
+	public void receiveNotice(ItemStack paper) {
+		noticeReceived = true;
+		setItemSlot(EquipmentSlot.MAINHAND, paper);
+	}
+
+	public int getPrisonCell() {
+		return prisonCell;
+	}
+
+	public void setPrisonCell(int cell) {
+		this.prisonCell = cell;
+	}
+
+	@Override
+	public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
+		boolean hurt = super.hurtServer(level, source, damage);
+		if (hurt && isAlive() && getStatus() == CitizenStatus.REBEL && !triedToSurrender && getHealth() < getMaxHealth() * SURRENDER_HEALTH) {
+			triedToSurrender = true;
+			if (random.nextBoolean()) {
+				Rebellions.surrender(level, this);
+			}
+		}
+		return hurt;
 	}
 
 	// ---- fatigue -----------------------------------------------------------------------------
@@ -221,7 +314,8 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 
 	/** Whether the energy bar is shown: for every worker, and for anybody who is not fully rested. */
 	public boolean getsTired() {
-		return getJob() != CitizenJob.SOLDIER && (getJob() != CitizenJob.UNEMPLOYED || getEnergy() < MAX_ENERGY);
+		return getJob() != CitizenJob.SOLDIER && getStatus() == CitizenStatus.FREE
+			&& (getJob() != CitizenJob.UNEMPLOYED || getEnergy() < MAX_ENERGY);
 	}
 
 	/** Called for every tick of work. */
@@ -242,9 +336,16 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		}
 	}
 
-	/** The energy bar shown under the name of working citizens. */
+	/** The energy bar of working citizens, or the status of rebels and prisoners, under the name. */
 	@Override
 	public @Nullable Component belowNameDisplay() {
+		CitizenStatus status = getStatus();
+		if (status == CitizenStatus.REBEL) {
+			return Component.translatable("status.architecturoverse.rebel").withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
+		}
+		if (status.isDetained()) {
+			return Component.translatable("status.architecturoverse." + status.name().toLowerCase()).withStyle(ChatFormatting.GRAY);
+		}
 		if (!getsTired()) {
 			return null;
 		}
@@ -256,10 +357,6 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		}
 		return bar.append(Component.literal(ENERGY_CELL.repeat(filled)).withStyle(color))
 			.append(Component.literal(ENERGY_CELL.repeat(10 - filled)).withStyle(ChatFormatting.DARK_GRAY));
-	}
-
-	public boolean isSoldier() {
-		return getJob() == CitizenJob.SOLDIER;
 	}
 
 	public VillagerData getLook() {
@@ -325,8 +422,8 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 
 	/**
 	 * The brain for what the citizen does right now, or null when there is nothing to work on
-	 * (unemployed, soldier). While the village has a building site, the unemployed and the farmers
-	 * join the builders; lumberjacks and miners keep supplying the warehouse.
+	 * (unemployed, soldier, messenger). While the village has a building site, the unemployed and the
+	 * farmers join the builders; lumberjacks and miners keep supplying the warehouse.
 	 */
 	public @Nullable WorkerAI getWorkerAI() {
 		CitizenJob role = getJob();
@@ -343,7 +440,7 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 				case MINER -> new MinerAI(this);
 				case FARMER -> new FarmerAI(this);
 				case BUILDER -> new BuilderAI(this);
-				case UNEMPLOYED, SOLDIER -> null;
+				case UNEMPLOYED, SOLDIER, MESSENGER -> null;
 			};
 		}
 		return workerAI;
@@ -412,7 +509,9 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 			if (record.get().mode() != getMode()) {
 				applyMode(record.get().mode());
 			}
-			condemned = record.get().condemned();
+			if (record.get().status() != getStatus()) {
+				setStatus(record.get().status());
+			}
 		} else {
 			manager.putCitizen(kingdom.get(), toRecord());
 		}
@@ -420,7 +519,7 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 	}
 
 	public CitizenRecord toRecord() {
-		return new CitizenRecord(getUUID(), getPlainTextName(), getJob(), getMode(), villageId, condemned);
+		return new CitizenRecord(getUUID(), getPlainTextName(), getJob(), getMode(), villageId, getStatus());
 	}
 
 	@Override
@@ -429,7 +528,7 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 			return super.mobInteract(player, hand);
 		}
 		if (player instanceof ServerPlayer serverPlayer) {
-			if (player.isShiftKeyDown()) {
+			if (player.isShiftKeyDown() && getStatus() == CitizenStatus.FREE) {
 				CitizenMode mode = getMode() == CitizenMode.FOLLOW ? CitizenMode.STAY : CitizenMode.FOLLOW;
 				KingdomNetworking.commandCitizen(serverPlayer, getUUID(), null, mode);
 				serverPlayer.sendOverlayMessage(Component.translatable("message.architecturoverse.citizen_mode",
@@ -443,11 +542,13 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 
 	@Override
 	public boolean canAttack(LivingEntity target) {
-		// Never fight the ruler or fellow citizens of the same ruler.
-		if (ruler != null && ruler.equals(target.getUUID())) {
+		boolean rebellion = getStatus() == CitizenStatus.REBEL
+			|| target instanceof CitizenEntity other && other.getStatus() == CitizenStatus.REBEL;
+		// Never fight the ruler or fellow citizens of the same ruler, unless it is a rebellion.
+		if (!rebellion && ruler != null && ruler.equals(target.getUUID())) {
 			return false;
 		}
-		if (target instanceof CitizenEntity other && ruler != null && ruler.equals(other.ruler)) {
+		if (!rebellion && target instanceof CitizenEntity other && ruler != null && ruler.equals(other.ruler)) {
 			return false;
 		}
 		return super.canAttack(target);
@@ -459,9 +560,12 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 			KingdomManager.get(serverLevel.getServer()).removeCitizen(ruler, getUUID());
 			ServerPlayer rulerPlayer = getRulerPlayer();
 			if (rulerPlayer != null) {
-				rulerPlayer.sendSystemMessage(condemned
+				rulerPlayer.sendSystemMessage(isCondemned()
 					? Component.translatable("message.architecturoverse.executed", getDisplayName()).withStyle(ChatFormatting.DARK_RED)
 					: Component.translatable("message.architecturoverse.citizen_died", getDisplayName()));
+			}
+			if (getStatus() == CitizenStatus.REBEL) {
+				Rebellions.checkEnd(serverLevel, ruler, villageId, this);
 			}
 		}
 		super.die(source);
@@ -488,10 +592,12 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		output.store("Look", VillagerData.CODEC, getLook());
 		output.store("Job", CitizenJob.CODEC, getJob());
 		output.store("Mode", CitizenMode.CODEC, getMode());
+		output.store("Status", CitizenStatus.CODEC, getStatus());
 		output.putInt("Village", villageId);
 		output.putFloat("Energy", getEnergy());
 		output.putBoolean("Resting", isResting());
-		output.putBoolean("Condemned", condemned);
+		output.putBoolean("Notice", noticeReceived);
+		output.putInt("PrisonCell", prisonCell);
 		if (ruler != null) {
 			output.store("Ruler", UUIDUtil.CODEC, ruler);
 		}
@@ -507,10 +613,14 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		input.read("Look", VillagerData.CODEC).ifPresent(look -> this.entityData.set(DATA_LOOK, look));
 		this.entityData.set(DATA_JOB, input.read("Job", CitizenJob.CODEC).orElse(CitizenJob.UNEMPLOYED).ordinal());
 		this.entityData.set(DATA_MODE, input.read("Mode", CitizenMode.CODEC).orElse(CitizenMode.WORK).ordinal());
+		CitizenStatus status = input.read("Status", CitizenStatus.CODEC)
+			.orElse(input.getBooleanOr("Condemned", false) ? CitizenStatus.CONDEMNED : CitizenStatus.FREE);
+		this.entityData.set(DATA_STATUS, status.ordinal());
 		this.villageId = input.getIntOr("Village", -1);
 		this.entityData.set(DATA_ENERGY, input.getFloatOr("Energy", MAX_ENERGY));
 		this.entityData.set(DATA_RESTING, input.getBooleanOr("Resting", false));
-		this.condemned = input.getBooleanOr("Condemned", false);
+		this.noticeReceived = input.getBooleanOr("Notice", status == CitizenStatus.CONDEMNED);
+		this.prisonCell = input.getIntOr("PrisonCell", -1);
 		this.ruler = input.read("Ruler", UUIDUtil.CODEC).orElse(null);
 		input.read("Home", BlockPos.CODEC).ifPresent(home -> setHomeTo(home, ClaimedVillage.RADIUS));
 		readInventoryFromTag(input);

@@ -14,6 +14,7 @@ public enum CitizenJob {
 	MINER(VillagerProfession.TOOLSMITH),
 	FARMER(VillagerProfession.FARMER),
 	BUILDER(VillagerProfession.MASON),
+	MESSENGER(VillagerProfession.CARTOGRAPHER),
 	SOLDIER(VillagerProfession.WEAPONSMITH);
 
 	public static final Codec<CitizenJob> CODEC = Codec.STRING.xmap(CitizenJob::byName, CitizenJob::name);
@@ -36,6 +37,7 @@ public enum CitizenJob {
 			case MINER -> new ItemStack(Items.IRON_PICKAXE);
 			case FARMER -> new ItemStack(Items.IRON_HOE);
 			case BUILDER -> new ItemStack(Items.IRON_SHOVEL);
+			case MESSENGER -> ItemStack.EMPTY;
 			case SOLDIER -> new ItemStack(Items.IRON_SWORD);
 		};
 	}

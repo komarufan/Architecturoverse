@@ -62,14 +62,15 @@ public class TraderEntity extends PathfinderMob implements InventoryCarrier {
 
 	public TraderEntity(EntityType<? extends TraderEntity> type, Level level) {
 		super(type, level);
-		this.getNavigation().setCanOpenDoors(true);
+		// Merchants walk around houses instead of trying to get through their doors.
+		this.getNavigation().setCanOpenDoors(false);
 		this.setPersistenceRequired();
 	}
 
 	public static AttributeSupplier.Builder createAttributes() {
 		return Mob.createMobAttributes()
 			.add(Attributes.MAX_HEALTH, 30.0)
-			.add(Attributes.MOVEMENT_SPEED, 0.5)
+			.add(Attributes.MOVEMENT_SPEED, 0.35)
 			.add(Attributes.FOLLOW_RANGE, 64.0);
 	}
 

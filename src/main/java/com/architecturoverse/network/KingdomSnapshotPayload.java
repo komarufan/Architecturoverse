@@ -25,7 +25,8 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 	 */
 	public record VillageInfo(int id, String dimension, BlockPos center, int population, boolean warehouse, int mineProgress,
 		List<StockEntry> stock, List<Integer> orders, boolean militaryBase, Optional<ConstructionInfo> construction, int armyOrder,
-		boolean traderPresent, boolean raidIncoming) {
+		boolean traderPresent, boolean raidIncoming, boolean prison, boolean postOffice, int mood, int ticksToPayday, int dailyWages,
+		boolean rebellion) {
 	}
 
 	public record StockEntry(ItemStack item, int count) {
@@ -35,7 +36,8 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 	public record ConstructionInfo(int type, int percent, int woodLeft, int stoneLeft) {
 	}
 
-	public record CitizenInfo(UUID uuid, String name, int job, int mode, int villageId, boolean condemned) {
+	/** {@code status} is a {@link com.architecturoverse.citizen.CitizenStatus} id. */
+	public record CitizenInfo(UUID uuid, String name, int job, int mode, int villageId, int status) {
 	}
 
 	private void write(RegistryFriendlyByteBuf buf) {
@@ -63,6 +65,12 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 			b.writeVarInt(v.armyOrder());
 			b.writeBoolean(v.traderPresent());
 			b.writeBoolean(v.raidIncoming());
+			b.writeBoolean(v.prison());
+			b.writeBoolean(v.postOffice());
+			b.writeVarInt(v.mood());
+			b.writeVarInt(v.ticksToPayday());
+			b.writeVarInt(v.dailyWages());
+			b.writeBoolean(v.rebellion());
 		});
 		buf.writeCollection(citizens, (b, c) -> {
 			b.writeUUID(c.uuid());
@@ -70,7 +78,7 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 			b.writeVarInt(c.job());
 			b.writeVarInt(c.mode());
 			b.writeVarInt(c.villageId());
-			b.writeBoolean(c.condemned());
+			b.writeVarInt(c.status());
 		});
 		buf.writeBoolean(focus.isPresent());
 		focus.ifPresent(buf::writeUUID);
@@ -86,9 +94,15 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 			b.readBoolean() ? Optional.of(new ConstructionInfo(b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt())) : Optional.empty(),
 			b.readVarInt(),
 			b.readBoolean(),
+			b.readBoolean(),
+			b.readBoolean(),
+			b.readBoolean(),
+			b.readVarInt(),
+			b.readVarInt(),
+			b.readVarInt(),
 			b.readBoolean()));
 		List<CitizenInfo> citizens = buf.readList(b -> new CitizenInfo(b.readUUID(), b.readUtf(), b.readVarInt(), b.readVarInt(), b.readVarInt(),
-			b.readBoolean()));
+			b.readVarInt()));
 		Optional<UUID> focus = buf.readBoolean() ? Optional.of(buf.readUUID()) : Optional.empty();
 		return new KingdomSnapshotPayload(ownerName, villages, citizens, focus);
 	}

@@ -80,7 +80,7 @@ public class MilitaryGameTests {
 		KingdomNetworking.commandCitizen(village.ruler(), soldier.getUUID(), CitizenJob.SOLDIER, null);
 		MilitaryBase base = instantBase(helper, village.ruler(), soldier);
 
-		helper.assertTrue(Executions.sentence(village.ruler(), prisoner.getUUID(), true), Component.literal("Sentence should be accepted"));
+		helper.assertTrue(Executions.sentence(village.ruler(), prisoner.getUUID(), Executions.Sentence.DEATH), Component.literal("Sentence should be accepted"));
 		helper.assertTrue(prisoner.isCondemned(), Component.literal("Citizen should be condemned"));
 
 		helper.succeedWhen(() -> {

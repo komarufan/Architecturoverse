@@ -9,9 +9,10 @@ import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
-/** A condemned citizen walks into the prison cell of the military base and waits there. */
+/** A condemned citizen waits for the sentence, then walks into the cell of the military base and waits there. */
 public class PrisonerGoal extends Goal {
 	private static final double OPEN_GATE_DISTANCE_SQ = 4.0 * 4.0;
 
@@ -19,6 +20,8 @@ public class PrisonerGoal extends Goal {
 
 	private final CitizenEntity prisoner;
 	private int nearCellTicks;
+	private int waitingForNotice;
+	private static final int MAX_NOTICE_WAIT = 20 * 120;
 
 	public PrisonerGoal(CitizenEntity prisoner) {
 		this.prisoner = prisoner;
@@ -43,6 +46,14 @@ public class PrisonerGoal extends Goal {
 	public void tick() {
 		Optional<MilitaryBase> base = base();
 		if (base.isEmpty()) {
+			return;
+		}
+		if (!prisoner.hasNotice()) {
+			// The messenger is on the way with the sentence; if nobody comes, the guards fetch the prisoner anyway.
+			prisoner.getNavigation().stop();
+			if (++waitingForNotice > MAX_NOTICE_WAIT) {
+				prisoner.receiveNotice(ItemStack.EMPTY);
+			}
 			return;
 		}
 		ServerLevel level = (ServerLevel) prisoner.level();

@@ -16,6 +16,7 @@ import com.architecturoverse.structure.StructureType;
 import com.architecturoverse.trade.Traders;
 import com.architecturoverse.village.Army;
 import com.architecturoverse.village.Constructions;
+import com.architecturoverse.village.Economy;
 import com.architecturoverse.village.Executions;
 import com.architecturoverse.village.VillageOrders;
 import java.util.LinkedHashMap;
@@ -66,7 +67,7 @@ public final class KingdomNetworking {
 			boolean changed = switch (payload.action()) {
 				case BUILD_STRUCTURE -> Constructions.start(player, payload.villageId(), StructureType.byId(payload.value()));
 				case ARMY_ORDER -> Army.order(player, payload.villageId(), ArmyOrder.byId(payload.value()));
-				case SENTENCE -> payload.citizen().isPresent() && Executions.sentence(player, payload.citizen().get(), payload.value() == 1);
+				case SENTENCE -> payload.citizen().isPresent() && Executions.sentence(player, payload.citizen().get(), Executions.Sentence.byId(payload.value()));
 				case CALL_TRADER -> Traders.call(player, payload.villageId());
 				case ROB_TRADER -> Traders.rob(player, payload.villageId());
 			};
@@ -96,13 +97,19 @@ public final class KingdomNetworking {
 				kingdom.population(v.id()), v.warehouse().isPresent(), v.mine().map(MineSite::progress).orElse(-1),
 				warehouseStock(player.level().getServer(), v), v.orders().stream().map(BuildOrder::ordinal).toList(),
 				v.militaryBase().isPresent(), constructionInfo(player.level().getServer(), v), v.armyOrder().ordinal(),
-				traderPresent(player, v), v.raidAt() > 0))
+				traderPresent(player, v), v.raidAt() > 0, v.prison().isPresent(), v.postOffice().isPresent(), v.mood().mood(),
+				ticksToPayday(player, v), Economy.dailyWages(kingdom, v.id()), v.mood().rebellion()))
 			.toList();
 		List<KingdomSnapshotPayload.CitizenInfo> citizens = kingdom.citizens().stream()
 			.map(c -> new KingdomSnapshotPayload.CitizenInfo(c.uuid(), c.name(), c.job().ordinal(), c.mode().ordinal(), c.villageId(),
-				c.condemned()))
+				c.status().ordinal()))
 			.toList();
 		ServerPlayNetworking.send(player, new KingdomSnapshotPayload(kingdom.ownerName(), villages, citizens, Optional.ofNullable(focus)));
+	}
+
+	private static int ticksToPayday(ServerPlayer player, ClaimedVillage village) {
+		ServerLevel level = player.level().getServer().getLevel(village.dimension());
+		return level == null ? 0 : (int) Economy.ticksToPayday(level, village);
 	}
 
 	/** Whether the travelling merchant is on his way to or from this village. */

@@ -2,6 +2,7 @@ package com.architecturoverse.client.screen;
 
 import com.architecturoverse.citizen.CitizenJob;
 import com.architecturoverse.citizen.CitizenMode;
+import com.architecturoverse.citizen.CitizenStatus;
 import com.architecturoverse.kingdom.ArmyOrder;
 import com.architecturoverse.kingdom.BuildOrder;
 import com.architecturoverse.network.CitizenCommandPayload;
@@ -12,6 +13,7 @@ import com.architecturoverse.network.KingdomSnapshotPayload.ConstructionInfo;
 import com.architecturoverse.network.KingdomSnapshotPayload.VillageInfo;
 import com.architecturoverse.network.VillageOrderPayload;
 import com.architecturoverse.structure.StructureType;
+import com.architecturoverse.village.Executions;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,11 +32,11 @@ public class KingdomScreen extends Screen {
 	private static final int PANEL_HEIGHT = 256;
 	private static final int VILLAGE_COLUMN = 110;
 	private static final int ROW_HEIGHT = 22;
-	private static final int ROWS_PER_PAGE = 6;
+	private static final int ROWS_PER_PAGE = 5;
 	private static final int CONTENT_TOP = 58;
 	private static final int ALL_VILLAGES = -1;
-	/** Offset of the merchant row on the structures tab. */
-	private static final int TRADER_ROW = 136;
+	/** Height of one row on the structures tab. */
+	private static final int STRUCTURE_ROW = 24;
 
 	private enum Tab { CITIZENS, STRUCTURES, ARMY }
 
@@ -47,6 +49,8 @@ public class KingdomScreen extends Screen {
 	private @Nullable UUID jobPickerFor;
 	/** Citizen whose execution waits for a second click. */
 	private @Nullable UUID confirmSentence;
+	/** Citizen whose justice menu is open. */
+	private @Nullable UUID lawPickerFor;
 
 	public KingdomScreen(KingdomSnapshotPayload data) {
 		super(Component.translatable("screen.architecturoverse.kingdom"));
@@ -121,6 +125,7 @@ public class KingdomScreen extends Screen {
 			Button button = addRenderableWidget(Button.builder(Component.translatable("screen.architecturoverse.tab." + t.name().toLowerCase()), b -> {
 				tab = t;
 				jobPickerFor = null;
+				lawPickerFor = null;
 				confirmSentence = null;
 				rebuildWidgets();
 			}).bounds(x, top() + 32, 92, 20).build());
@@ -148,6 +153,7 @@ public class KingdomScreen extends Screen {
 			selectedVillage = villageId;
 			page = 0;
 			jobPickerFor = null;
+			lawPickerFor = null;
 			rebuildWidgets();
 		}).bounds(x, y, VILLAGE_COLUMN, 20).build());
 		button.active = selectedVillage != villageId;
@@ -157,6 +163,10 @@ public class KingdomScreen extends Screen {
 		int x = contentX();
 		if (jobPickerFor != null) {
 			addJobPicker(x, top() + CONTENT_TOP);
+			return;
+		}
+		if (lawPickerFor != null) {
+			addLawPicker(x, top() + CONTENT_TOP);
 			return;
 		}
 		int rowY = top() + CONTENT_TOP;
@@ -171,12 +181,19 @@ public class KingdomScreen extends Screen {
 				})
 				.bounds(x + 84, rowY, 86, 20)
 				.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.job_hint")))
-				.build()).active = !citizen.condemned();
+				.build()).active = CitizenStatus.byId(citizen.status()) == CitizenStatus.FREE;
 			addRenderableWidget(Button.builder(mode.displayName(), b -> sendCitizenOrder(citizen, null, mode.next()))
 				.bounds(x + 174, rowY, 66, 20)
 				.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.mode_hint")))
-				.build()).active = !citizen.condemned();
-			addSentenceButton(citizen, x + 244, rowY);
+				.build()).active = CitizenStatus.byId(citizen.status()) == CitizenStatus.FREE;
+			addRenderableWidget(Button.builder(Component.literal("⚖"), b -> {
+					lawPickerFor = citizen.uuid();
+					confirmSentence = null;
+					rebuildWidgets();
+				})
+				.bounds(x + 244, rowY, 42, 20)
+				.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.law_hint")))
+				.build());
 			rowY += ROW_HEIGHT;
 		}
 		Button prev = addRenderableWidget(Button.builder(Component.literal("<"), b -> changePage(-1)).bounds(x, bottom(), 20, 20).build());
@@ -185,28 +202,49 @@ public class KingdomScreen extends Screen {
 		next.active = page < pageCount() - 1;
 	}
 
-	/** "Execute" asks for a second click; condemned citizens can be pardoned instead. */
-	private void addSentenceButton(CitizenInfo citizen, int x, int y) {
-		Component label;
-		Runnable action;
-		if (citizen.condemned()) {
-			label = Component.translatable("screen.architecturoverse.pardon").withStyle(ChatFormatting.GREEN);
-			action = () -> sendSentence(citizen, false);
-		} else if (citizen.uuid().equals(confirmSentence)) {
-			label = Component.translatable("screen.architecturoverse.execute_confirm").withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
-			action = () -> sendSentence(citizen, true);
-		} else {
-			label = Component.translatable("screen.architecturoverse.execute").withStyle(ChatFormatting.DARK_RED);
-			action = () -> {
-				confirmSentence = citizen.uuid();
-				rebuildWidgets();
-			};
+	/** The justice menu for one citizen: execute (asks twice), prison, or pardon / release. */
+	private void addLawPicker(int x, int y) {
+		CitizenInfo citizen = data.citizens().stream().filter(c -> c.uuid().equals(lawPickerFor)).findFirst().orElse(null);
+		if (citizen == null) {
+			lawPickerFor = null;
+			return;
 		}
-		addRenderableWidget(Button.builder(label, b -> action.run())
-			.bounds(x, y, 42, 20)
-			.tooltip(Tooltip.create(Component.translatable(citizen.condemned()
-				? "screen.architecturoverse.pardon_hint" : "screen.architecturoverse.execute_hint")))
+		CitizenStatus status = CitizenStatus.byId(citizen.status());
+		int rowY = y + 14;
+		boolean confirming = citizen.uuid().equals(confirmSentence);
+		Button execute = addRenderableWidget(Button.builder(Component.translatable(confirming
+					? "screen.architecturoverse.execute_confirm" : "screen.architecturoverse.execute")
+					.withStyle(confirming ? ChatFormatting.RED : ChatFormatting.DARK_RED),
+				b -> {
+					if (citizen.uuid().equals(confirmSentence)) {
+						sendSentence(citizen, Executions.Sentence.DEATH);
+					} else {
+						confirmSentence = citizen.uuid();
+						rebuildWidgets();
+					}
+				})
+			.bounds(x, rowY, 200, 20)
+			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.execute_hint")))
 			.build());
+		execute.active = status != CitizenStatus.CONDEMNED;
+		Button prison = addRenderableWidget(Button.builder(Component.translatable("screen.architecturoverse.imprison"),
+				b -> sendSentence(citizen, Executions.Sentence.PRISON))
+			.bounds(x, rowY + ROW_HEIGHT, 200, 20)
+			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.imprison_hint")))
+			.build());
+		prison.active = status == CitizenStatus.FREE || status == CitizenStatus.REBEL;
+		Button pardon = addRenderableWidget(Button.builder(Component.translatable(status == CitizenStatus.CONDEMNED
+					? "screen.architecturoverse.pardon" : "screen.architecturoverse.release").withStyle(ChatFormatting.GREEN),
+				b -> sendSentence(citizen, Executions.Sentence.PARDON))
+			.bounds(x, rowY + ROW_HEIGHT * 2, 200, 20)
+			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.pardon_hint")))
+			.build());
+		pardon.active = status != CitizenStatus.FREE;
+		addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), b -> {
+			lawPickerFor = null;
+			confirmSentence = null;
+			rebuildWidgets();
+		}).bounds(x, rowY + ROW_HEIGHT * 3 + 6, 200, 20).build());
 	}
 
 	/** The drop-down list of jobs for one citizen. */
@@ -241,20 +279,27 @@ public class KingdomScreen extends Screen {
 		int x = contentX() + 160;
 		int y = top() + CONTENT_TOP;
 		addOrderButton(x, y, village, BuildOrder.WAREHOUSE, village.warehouse());
-		addOrderButton(x, y + 28, village, BuildOrder.MINE, false);
-		Button base = addRenderableWidget(Button.builder(Component.translatable("screen.architecturoverse.build"),
-				b -> ClientPlayNetworking.send(new KingdomActionPayload(KingdomActionPayload.Action.BUILD_STRUCTURE, village.id(),
-					StructureType.MILITARY_BASE.ordinal(), Optional.empty())))
-			.bounds(x, y + 56, 120, 20)
-			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.military_base_hint")))
-			.build());
-		base.active = !village.militaryBase() && village.construction().isEmpty();
+		addOrderButton(x, y + STRUCTURE_ROW, village, BuildOrder.MINE, false);
+		addStructureButton(x, y + STRUCTURE_ROW * 2, village, StructureType.MILITARY_BASE, village.militaryBase());
+		addStructureButton(x, y + STRUCTURE_ROW * 3, village, StructureType.PRISON, village.prison());
+		addStructureButton(x, y + STRUCTURE_ROW * 4, village, StructureType.POST_OFFICE, village.postOffice());
 		Button trader = addRenderableWidget(Button.builder(Component.translatable("screen.architecturoverse.call_trader"),
 				b -> ClientPlayNetworking.send(new KingdomActionPayload(KingdomActionPayload.Action.CALL_TRADER, village.id(), 0, Optional.empty())))
-			.bounds(x, y + TRADER_ROW, 120, 20)
+			.bounds(x, y + STRUCTURE_ROW * 5, 120, 20)
 			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.call_trader_hint")))
 			.build());
 		trader.active = village.warehouse() && !village.traderPresent();
+	}
+
+	/** "Build" for a building that the villagers put up block by block. */
+	private void addStructureButton(int x, int y, VillageInfo village, StructureType type, boolean built) {
+		Button button = addRenderableWidget(Button.builder(Component.translatable("screen.architecturoverse.build"),
+				b -> ClientPlayNetworking.send(new KingdomActionPayload(KingdomActionPayload.Action.BUILD_STRUCTURE, village.id(),
+					type.ordinal(), Optional.empty())))
+			.bounds(x, y, 120, 20)
+			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.structure_hint." + type.name().toLowerCase())))
+			.build());
+		button.active = !built && village.construction().isEmpty();
 	}
 
 	/** "Build a warehouse" / "Found a mine": the order goes to the village builders. */
@@ -304,11 +349,13 @@ public class KingdomScreen extends Screen {
 		ClientPlayNetworking.send(new CitizenCommandPayload(citizen.uuid(), job == null ? -1 : job.ordinal(), mode == null ? -1 : mode.ordinal()));
 	}
 
-	private void sendSentence(CitizenInfo citizen, boolean condemn) {
+	private void sendSentence(CitizenInfo citizen, Executions.Sentence sentence) {
 		confirmSentence = null;
+		lawPickerFor = null;
 		highlighted = citizen.uuid();
-		ClientPlayNetworking.send(new KingdomActionPayload(KingdomActionPayload.Action.SENTENCE, citizen.villageId(), condemn ? 1 : 0,
+		ClientPlayNetworking.send(new KingdomActionPayload(KingdomActionPayload.Action.SENTENCE, citizen.villageId(), sentence.ordinal(),
 			Optional.of(citizen.uuid())));
+		rebuildWidgets();
 	}
 
 	// ---- drawing -----------------------------------------------------------------------------
@@ -339,11 +386,12 @@ public class KingdomScreen extends Screen {
 
 	private void extractCitizens(GuiGraphicsExtractor graphics) {
 		int x = contentX();
-		if (jobPickerFor != null) {
+		if (jobPickerFor != null || lawPickerFor != null) {
 			int titleY = top() + CONTENT_TOP;
-			data.citizens().stream().filter(c -> c.uuid().equals(jobPickerFor)).findFirst().ifPresent(c ->
-				graphics.text(font, Component.translatable("screen.architecturoverse.choose_job", c.name()).withStyle(ChatFormatting.GOLD),
-					x, titleY, 0xFFFFFFFF));
+			UUID picked = jobPickerFor != null ? jobPickerFor : lawPickerFor;
+			String key = jobPickerFor != null ? "screen.architecturoverse.choose_job" : "screen.architecturoverse.choose_sentence";
+			data.citizens().stream().filter(c -> c.uuid().equals(picked)).findFirst().ifPresent(c ->
+				graphics.text(font, Component.translatable(key, c.name()).withStyle(ChatFormatting.GOLD), x, titleY, 0xFFFFFFFF));
 			return;
 		}
 		int rowY = top() + CONTENT_TOP;
@@ -356,14 +404,36 @@ public class KingdomScreen extends Screen {
 			if (citizen.uuid().equals(highlighted)) {
 				graphics.fill(x - 3, rowY - 1, x + 288, rowY + 21, 0x40C9A227);
 			}
-			Component name = citizen.condemned()
-				? Component.literal("† " + citizen.name()).withStyle(ChatFormatting.RED)
-				: Component.literal(citizen.name());
-			graphics.text(font, name, x, rowY + 6, 0xFFFFFFFF);
+			graphics.text(font, citizenName(citizen), x, rowY + 6, 0xFFFFFFFF);
 			rowY += ROW_HEIGHT;
 		}
 		graphics.centeredText(font, Component.translatable("screen.architecturoverse.page", page + 1, pageCount()), x + 45, bottom() + 6, 0xFFFFFFFF);
-		selectedVillageInfo().ifPresent(village -> extractStock(graphics, village, x, bottom() - 30));
+		selectedVillageInfo().ifPresent(village -> {
+			extractMood(graphics, village, x, bottom() - 52);
+			extractStock(graphics, village, x, bottom() - 30);
+		});
+	}
+
+	/** The name, marked with the citizen's status: † condemned, [prison] prisoners, ⚑ rebels. */
+	private static Component citizenName(CitizenInfo citizen) {
+		return switch (CitizenStatus.byId(citizen.status())) {
+			case FREE -> Component.literal(citizen.name());
+			case CONDEMNED -> Component.literal("† " + citizen.name()).withStyle(ChatFormatting.RED);
+			case ARRESTED, IMPRISONED -> Component.literal("▦ " + citizen.name()).withStyle(ChatFormatting.GRAY);
+			case REBEL -> Component.literal("⚑ " + citizen.name()).withStyle(ChatFormatting.DARK_RED);
+		};
+	}
+
+	/** Mood, wages and the next payday; a warning while the village is in rebellion. */
+	private void extractMood(GuiGraphicsExtractor graphics, VillageInfo village, int x, int y) {
+		if (village.rebellion()) {
+			graphics.text(font, Component.translatable("screen.architecturoverse.rebellion").withStyle(ChatFormatting.RED, ChatFormatting.BOLD), x, y, 0xFFFFFFFF);
+			return;
+		}
+		ChatFormatting color = village.mood() >= 60 ? ChatFormatting.GREEN : village.mood() >= 35 ? ChatFormatting.YELLOW : ChatFormatting.RED;
+		graphics.text(font, Component.translatable("screen.architecturoverse.mood", village.mood()).withStyle(color)
+			.append(Component.translatable("screen.architecturoverse.wages", village.dailyWages(), village.ticksToPayday() / 1200)
+				.withStyle(ChatFormatting.GRAY)), x, y, 0xFFFFFFFF);
 	}
 
 	/** Warehouse and mine status plus the warehouse's biggest stocks. */
@@ -387,28 +457,31 @@ public class KingdomScreen extends Screen {
 		}
 		VillageInfo village = selected.get();
 		graphics.text(font, warehouseStatus(village), x, y + 6, 0xFFFFFFFF);
-		graphics.text(font, mineStatus(village), x, y + 34, 0xFFFFFFFF);
-		Component baseStatus;
-		if (village.militaryBase()) {
-			baseStatus = Component.translatable("screen.architecturoverse.military_base_built").withStyle(ChatFormatting.GREEN);
-		} else if (village.construction().isPresent()) {
-			baseStatus = Component.translatable("screen.architecturoverse.under_construction",
-				StructureType.byId(village.construction().get().type()).displayName(), village.construction().get().percent())
-				.withStyle(ChatFormatting.YELLOW);
-		} else {
-			baseStatus = Component.translatable("screen.architecturoverse.military_base_none").withStyle(ChatFormatting.GRAY);
-		}
-		graphics.text(font, baseStatus, x, y + 62, 0xFFFFFFFF);
-		village.construction().ifPresent(site -> extractConstruction(graphics, site, x, y + 90));
+		graphics.text(font, mineStatus(village), x, y + STRUCTURE_ROW + 6, 0xFFFFFFFF);
+		graphics.text(font, structureStatus(village, StructureType.MILITARY_BASE, village.militaryBase()), x, y + STRUCTURE_ROW * 2 + 6, 0xFFFFFFFF);
+		graphics.text(font, structureStatus(village, StructureType.PRISON, village.prison()), x, y + STRUCTURE_ROW * 3 + 6, 0xFFFFFFFF);
+		graphics.text(font, structureStatus(village, StructureType.POST_OFFICE, village.postOffice()), x, y + STRUCTURE_ROW * 4 + 6, 0xFFFFFFFF);
 		graphics.text(font, Component.translatable(village.traderPresent() ? "screen.architecturoverse.trader_here" : "screen.architecturoverse.trader_none")
-			.withStyle(village.traderPresent() ? ChatFormatting.GREEN : ChatFormatting.GRAY), x, y + TRADER_ROW + 6, 0xFFFFFFFF);
+			.withStyle(village.traderPresent() ? ChatFormatting.GREEN : ChatFormatting.GRAY), x, y + STRUCTURE_ROW * 5 + 6, 0xFFFFFFFF);
+		village.construction().ifPresent(site -> extractConstruction(graphics, site, x, y + STRUCTURE_ROW * 6 + 4));
+	}
+
+	/** "Prison: built", "Prison: 45%" or "Prison: none". */
+	private static Component structureStatus(VillageInfo village, StructureType type, boolean built) {
+		if (built) {
+			return Component.translatable("screen.architecturoverse.structure_built", type.displayName()).withStyle(ChatFormatting.GREEN);
+		}
+		if (village.construction().isPresent() && village.construction().get().type() == type.ordinal()) {
+			return Component.translatable("screen.architecturoverse.under_construction", type.displayName(), village.construction().get().percent())
+				.withStyle(ChatFormatting.YELLOW);
+		}
+		return Component.translatable("screen.architecturoverse.structure_none", type.displayName()).withStyle(ChatFormatting.GRAY);
 	}
 
 	private void extractConstruction(GuiGraphicsExtractor graphics, ConstructionInfo site, int x, int y) {
-		graphics.fill(x, y, x + 280, y + 6, 0xFF333333);
-		graphics.fill(x, y, x + 280 * site.percent() / 100, y + 6, 0xFF55AA55);
-		graphics.text(font, Component.translatable("screen.architecturoverse.blocks_left", site.woodLeft(), site.stoneLeft()), x, y + 12, 0xFFFFFFFF);
-		graphics.text(font, Component.translatable("screen.architecturoverse.construction_crew").withStyle(ChatFormatting.GRAY), x, y + 26, 0xFFFFFFFF);
+		graphics.fill(x, y, x + 280, y + 4, 0xFF333333);
+		graphics.fill(x, y, x + 280 * site.percent() / 100, y + 4, 0xFF55AA55);
+		graphics.text(font, Component.translatable("screen.architecturoverse.blocks_left", site.woodLeft(), site.stoneLeft()), x, y + 8, 0xFFFFFFFF);
 	}
 
 	private void extractArmy(GuiGraphicsExtractor graphics) {

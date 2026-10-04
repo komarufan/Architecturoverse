@@ -6,6 +6,7 @@ import com.architecturoverse.kingdom.Construction;
 import com.architecturoverse.kingdom.Kingdom;
 import com.architecturoverse.kingdom.KingdomManager;
 import com.architecturoverse.kingdom.MilitaryBase;
+import com.architecturoverse.kingdom.Placement;
 import com.architecturoverse.structure.ConstructionPlan;
 import com.architecturoverse.structure.Material;
 import com.architecturoverse.structure.StructureType;
@@ -55,8 +56,8 @@ public final class Constructions {
 			ruler.sendOverlayMessage(Component.translatable("message.architecturoverse.already_constructing").withStyle(ChatFormatting.YELLOW));
 			return false;
 		}
-		if (type == StructureType.MILITARY_BASE && village.get().militaryBase().isPresent()) {
-			ruler.sendOverlayMessage(Component.translatable("message.architecturoverse.has_military_base").withStyle(ChatFormatting.YELLOW));
+		if (village.get().has(type)) {
+			ruler.sendOverlayMessage(Component.translatable("message.architecturoverse.already_built", type.displayName()).withStyle(ChatFormatting.YELLOW));
 			return false;
 		}
 		ServerLevel level = ruler.level().getServer().getLevel(village.get().dimension());
@@ -155,9 +156,12 @@ public final class Constructions {
 		worker.getKingdomManager().ifPresent(manager -> worker.getKingdom().ifPresent(kingdom ->
 			manager.updateVillage(kingdom, worker.getVillageId(), v -> {
 				ClaimedVillage done = v.withConstruction(Optional.empty());
-				return site.type() == StructureType.MILITARY_BASE
-					? done.withMilitaryBase(Optional.of(new MilitaryBase(site.origin(), site.rotation())))
-					: done;
+				Placement placement = new Placement(site.type(), site.origin(), site.rotation());
+				return switch (site.type()) {
+					case MILITARY_BASE -> done.withMilitaryBase(Optional.of(new MilitaryBase(site.origin(), site.rotation())));
+					case PRISON -> done.withPrison(Optional.of(placement));
+					case POST_OFFICE -> done.withPostOffice(Optional.of(placement));
+				};
 			})));
 		level.playSound(null, site.origin(), SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.BLOCKS, 1.0F, 1.0F);
 		ServerPlayer ruler = worker.getRulerPlayer();
