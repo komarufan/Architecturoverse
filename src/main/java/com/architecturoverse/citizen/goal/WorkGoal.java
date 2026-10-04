@@ -31,7 +31,7 @@ public class WorkGoal extends Goal {
 
 	@Override
 	public boolean canUse() {
-		if (citizen.getMode() != CitizenMode.WORK || citizen.getTarget() != null) {
+		if (citizen.getMode() != CitizenMode.WORK || citizen.getTarget() != null || citizen.isResting()) {
 			return false;
 		}
 		WorkerAI ai = citizen.getWorkerAI();
@@ -61,6 +61,9 @@ public class WorkGoal extends Goal {
 	@Override
 	public void tick() {
 		WorkerAI ai = citizen.getWorkerAI();
+		if (ai != null && !idle) {
+			citizen.tire(); // anyone actually working gets tired, including helpers on a building site
+		}
 		if (depositing || shouldDeposit(ai)) {
 			depositing = true;
 			if (deposit(ai)) {

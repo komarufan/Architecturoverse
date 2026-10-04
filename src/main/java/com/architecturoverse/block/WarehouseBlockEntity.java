@@ -1,6 +1,9 @@
 package com.architecturoverse.block;
 
 import com.architecturoverse.registry.ModBlocks;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
@@ -30,6 +33,34 @@ public class WarehouseBlockEntity extends BaseContainerBlockEntity {
 		ItemStack remainder = HopperBlockEntity.addItem(null, this, stack, null);
 		setChanged();
 		return remainder;
+	}
+
+	/** Takes up to {@code max} items matching the filter, as stacks. */
+	public List<ItemStack> take(Predicate<ItemStack> filter, int max) {
+		List<ItemStack> taken = new ArrayList<>();
+		int left = max;
+		for (int i = 0; i < SIZE && left > 0; i++) {
+			ItemStack stack = items.get(i);
+			if (!stack.isEmpty() && filter.test(stack)) {
+				ItemStack part = stack.split(Math.min(left, stack.getCount()));
+				left -= part.getCount();
+				taken.add(part);
+			}
+		}
+		if (!taken.isEmpty()) {
+			setChanged();
+		}
+		return taken;
+	}
+
+	public int count(Predicate<ItemStack> filter) {
+		int count = 0;
+		for (ItemStack stack : items) {
+			if (!stack.isEmpty() && filter.test(stack)) {
+				count += stack.getCount();
+			}
+		}
+		return count;
 	}
 
 	@Override

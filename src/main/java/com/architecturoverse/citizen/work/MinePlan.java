@@ -21,22 +21,36 @@ public final class MinePlan {
 	/** How far below the entrance the staircase goes, at most. */
 	public static final int MAX_DEPTH = 96;
 
-	private static final Map<String, List<Step>> CACHE = new ConcurrentHashMap<>();
+	private static final Map<String, Layout> CACHE = new ConcurrentHashMap<>();
 
 	public record Step(BlockPos pos, boolean torch) {
+	}
+
+	/** {@code route} lists the feet positions of every dug column in digging order, i.e. the way through the mine. */
+	private record Layout(List<Step> steps, List<BlockPos> route) {
 	}
 
 	private MinePlan() {
 	}
 
 	public static List<Step> of(MineSite site, int minBuildY) {
+		return layout(site, minBuildY).steps();
+	}
+
+	/** Feet positions along the mine from the top of the stairs to the last branch. */
+	public static List<BlockPos> route(MineSite site, int minBuildY) {
+		return layout(site, minBuildY).route();
+	}
+
+	private static Layout layout(MineSite site, int minBuildY) {
 		int bottomY = Math.max(minBuildY + 8, site.entrance().getY() - 1 - MAX_DEPTH);
 		String key = site.entrance().asLong() + "/" + site.facing() + "/" + bottomY;
 		return CACHE.computeIfAbsent(key, k -> build(site.entrance(), site.facing(), bottomY));
 	}
 
-	private static List<Step> build(BlockPos entrance, Direction forward, int bottomY) {
+	private static Layout build(BlockPos entrance, Direction forward, int bottomY) {
 		List<Step> steps = new ArrayList<>();
+		List<BlockPos> route = new ArrayList<>();
 		Direction left = forward.getCounterClockWise();
 		Direction right = forward.getClockWise();
 
@@ -52,6 +66,7 @@ public final class MinePlan {
 			steps.add(new Step(floor.above(2), false));
 			steps.add(new Step(floor.above(), false));
 			steps.add(new Step(floor, stair % TORCH_SPACING == 0));
+			route.add(floor);
 		}
 
 		// Main tunnel with branches to both sides.
@@ -60,16 +75,18 @@ public final class MinePlan {
 			BlockPos floor = tunnelStart.relative(forward, i);
 			steps.add(new Step(floor.above(), false));
 			steps.add(new Step(floor, i % TORCH_SPACING == 0));
+			route.add(floor);
 			if (i % BRANCH_SPACING == 0) {
 				for (Direction side : new Direction[] {left, right}) {
 					for (int b = 1; b <= BRANCH_LENGTH; b++) {
 						BlockPos branch = floor.relative(side, b);
 						steps.add(new Step(branch.above(), false));
 						steps.add(new Step(branch, b % TORCH_SPACING == 0));
+						route.add(branch);
 					}
 				}
 			}
 		}
-		return List.copyOf(steps);
+		return new Layout(List.copyOf(steps), List.copyOf(route));
 	}
 }

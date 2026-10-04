@@ -1,10 +1,15 @@
 package com.architecturoverse.citizen;
 
+import com.architecturoverse.citizen.goal.ExecutionerGoal;
 import com.architecturoverse.citizen.goal.FollowRulerGoal;
+import com.architecturoverse.citizen.goal.PrisonerGoal;
+import com.architecturoverse.citizen.goal.SleepGoal;
+import com.architecturoverse.citizen.goal.SoldierGoal;
 import com.architecturoverse.citizen.goal.WorkGoal;
 import com.architecturoverse.citizen.work.BuilderAI;
 import com.architecturoverse.citizen.work.FarmerAI;
 import com.architecturoverse.citizen.work.LumberjackAI;
+import com.architecturoverse.citizen.work.MineRoute;
 import com.architecturoverse.citizen.work.MinerAI;
 import com.architecturoverse.citizen.work.Walker;
 import com.architecturoverse.citizen.work.WorkerAI;
@@ -19,7 +24,9 @@ import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -68,11 +75,21 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.INT);
 	private static final EntityDataAccessor<Integer> DATA_MODE =
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.INT);
+	private static final EntityDataAccessor<Float> DATA_ENERGY =
+		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.FLOAT);
+	private static final EntityDataAccessor<Boolean> DATA_RESTING =
+		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.BOOLEAN);
+	public static final float MAX_ENERGY = 100.0F;
+	/** A full night's sleep lasts for about four minutes of work. */
+	private static final float TIRE_PER_WORK_TICK = MAX_ENERGY / (20 * 60 * 4);
+	/** Sleeping in a bed restores full energy in about a minute. */
+	private static final float RECOVER_PER_TICK = MAX_ENERGY / (20 * 60);
 	public static final int INVENTORY_SIZE = 12;
 
 	private @Nullable UUID ruler;
 	private int villageId = -1;
 	private boolean syncedWithKingdom;
+	private boolean condemned;
 	private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
 	private final Walker walker = new Walker(this);
 	private @Nullable WorkerAI workerAI;
@@ -98,6 +115,8 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		entityData.define(DATA_LOOK, Villager.createDefaultVillagerData());
 		entityData.define(DATA_JOB, CitizenJob.UNEMPLOYED.ordinal());
 		entityData.define(DATA_MODE, CitizenMode.WORK.ordinal());
+		entityData.define(DATA_ENERGY, MAX_ENERGY);
+		entityData.define(DATA_RESTING, false);
 	}
 
 	@Override
@@ -117,11 +136,15 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		this.goalSelector.addGoal(1, new PanicGoal(this, 0.75) {
 			@Override
 			public boolean canUse() {
-				return !isSoldier() && super.canUse();
+				return !isSoldier() && !condemned && super.canUse();
 			}
 		});
+		this.goalSelector.addGoal(0, new PrisonerGoal(this));
+		this.goalSelector.addGoal(1, new SleepGoal(this));
+		this.goalSelector.addGoal(1, new ExecutionerGoal(this));
 		this.goalSelector.addGoal(2, new FollowRulerGoal(this, 0.7, 5.0F, 24.0F));
 		this.goalSelector.addGoal(3, new WorkGoal(this));
+		this.goalSelector.addGoal(3, new SoldierGoal(this));
 		this.goalSelector.addGoal(3, new OpenDoorGoal(this, true));
 		this.goalSelector.addGoal(4, new MoveTowardsRestrictionGoal(this, 0.6) {
 			@Override
@@ -161,6 +184,74 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 
 	public CitizenMode getMode() {
 		return CitizenMode.byId(this.entityData.get(DATA_MODE));
+	}
+
+	// ---- sentence ----------------------------------------------------------------------------
+
+	/** Sentenced to death: walks into the prison cell of the military base and waits there. */
+	public boolean isCondemned() {
+		return condemned;
+	}
+
+	public void setCondemned(boolean condemned) {
+		this.condemned = condemned;
+		if (condemned) {
+			applyMode(CitizenMode.WORK);
+			this.entityData.set(DATA_RESTING, false);
+			if (isSleeping()) {
+				stopSleeping();
+			}
+		}
+	}
+
+	// ---- fatigue -----------------------------------------------------------------------------
+
+	public float getEnergy() {
+		return this.entityData.get(DATA_ENERGY);
+	}
+
+	/** Exhausted and on the way to bed (or asleep) until fully rested. */
+	public boolean isResting() {
+		return this.entityData.get(DATA_RESTING);
+	}
+
+	/** Whether the energy bar is shown: for every worker, and for anybody who is not fully rested. */
+	public boolean getsTired() {
+		return getJob() != CitizenJob.SOLDIER && (getJob() != CitizenJob.UNEMPLOYED || getEnergy() < MAX_ENERGY);
+	}
+
+	/** Called for every tick of work. */
+	public void tire() {
+		float energy = Math.max(0.0F, getEnergy() - TIRE_PER_WORK_TICK);
+		this.entityData.set(DATA_ENERGY, energy);
+		if (energy <= 0.0F) {
+			this.entityData.set(DATA_RESTING, true);
+		}
+	}
+
+	/** Called while resting; {@code speed} is 1 in a bed and lower without one. */
+	public void recover(float speed) {
+		float energy = Math.min(MAX_ENERGY, getEnergy() + RECOVER_PER_TICK * speed);
+		this.entityData.set(DATA_ENERGY, energy);
+		if (energy >= MAX_ENERGY) {
+			this.entityData.set(DATA_RESTING, false);
+		}
+	}
+
+	/** The energy bar shown under the name of working citizens. */
+	@Override
+	public @Nullable Component belowNameDisplay() {
+		if (!getsTired()) {
+			return null;
+		}
+		int filled = Math.round(getEnergy() / MAX_ENERGY * 10);
+		ChatFormatting color = filled > 5 ? ChatFormatting.GREEN : filled > 2 ? ChatFormatting.YELLOW : ChatFormatting.RED;
+		MutableComponent bar = Component.empty();
+		if (isResting()) {
+			bar.append(Component.literal("Zzz ").withStyle(ChatFormatting.AQUA));
+		}
+		return bar.append(Component.literal("25A0".repeat(filled)).withStyle(color))
+			.append(Component.literal("25A0".repeat(10 - filled)).withStyle(ChatFormatting.DARK_GRAY));
 	}
 
 	public boolean isSoldier() {
@@ -219,18 +310,31 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 	}
 
 	public boolean walkTo(BlockPos target, double reach) {
+		Optional<BlockPos> waypoint = getVillage().flatMap(ClaimedVillage::mine)
+			.flatMap(mine -> MineRoute.waypoint(mine, level().getMinY(), position(), target));
+		if (waypoint.isPresent()) {
+			walker.walkTo(waypoint.get(), 1.5);
+			return false;
+		}
 		return walker.walkTo(target, reach);
 	}
 
-	/** The brain for the current job, or null for jobs that are not about gathering (unemployed, soldier). */
+	/**
+	 * The brain for what the citizen does right now, or null when there is nothing to work on
+	 * (unemployed, soldier). While the village has a building site, the unemployed and the farmers
+	 * join the builders; lumberjacks and miners keep supplying the warehouse.
+	 */
 	public @Nullable WorkerAI getWorkerAI() {
-		CitizenJob job = getJob();
-		if (workerAIJob != job) {
+		CitizenJob role = getJob();
+		if ((role == CitizenJob.UNEMPLOYED || role == CitizenJob.FARMER) && getVillage().flatMap(ClaimedVillage::construction).isPresent()) {
+			role = CitizenJob.BUILDER;
+		}
+		if (workerAIJob != role) {
 			if (workerAI != null) {
 				workerAI.stop();
 			}
-			workerAIJob = job;
-			workerAI = switch (job) {
+			workerAIJob = role;
+			workerAI = switch (role) {
 				case LUMBERJACK -> new LumberjackAI(this);
 				case MINER -> new MinerAI(this);
 				case FARMER -> new FarmerAI(this);
@@ -296,6 +400,7 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 			if (record.get().mode() != getMode()) {
 				applyMode(record.get().mode());
 			}
+			condemned = record.get().condemned();
 		} else {
 			manager.putCitizen(kingdom.get(), toRecord());
 		}
@@ -303,7 +408,7 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 	}
 
 	public CitizenRecord toRecord() {
-		return new CitizenRecord(getUUID(), getPlainTextName(), getJob(), getMode(), villageId);
+		return new CitizenRecord(getUUID(), getPlainTextName(), getJob(), getMode(), villageId, condemned);
 	}
 
 	@Override
@@ -342,7 +447,9 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 			KingdomManager.get(serverLevel.getServer()).removeCitizen(ruler, getUUID());
 			ServerPlayer rulerPlayer = getRulerPlayer();
 			if (rulerPlayer != null) {
-				rulerPlayer.sendSystemMessage(Component.translatable("message.architecturoverse.citizen_died", getDisplayName()));
+				rulerPlayer.sendSystemMessage(condemned
+					? Component.translatable("message.architecturoverse.executed", getDisplayName()).withStyle(ChatFormatting.DARK_RED)
+					: Component.translatable("message.architecturoverse.citizen_died", getDisplayName()));
 			}
 		}
 		super.die(source);
@@ -370,6 +477,9 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		output.store("Job", CitizenJob.CODEC, getJob());
 		output.store("Mode", CitizenMode.CODEC, getMode());
 		output.putInt("Village", villageId);
+		output.putFloat("Energy", getEnergy());
+		output.putBoolean("Resting", isResting());
+		output.putBoolean("Condemned", condemned);
 		if (ruler != null) {
 			output.store("Ruler", UUIDUtil.CODEC, ruler);
 		}
@@ -386,6 +496,9 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		this.entityData.set(DATA_JOB, input.read("Job", CitizenJob.CODEC).orElse(CitizenJob.UNEMPLOYED).ordinal());
 		this.entityData.set(DATA_MODE, input.read("Mode", CitizenMode.CODEC).orElse(CitizenMode.WORK).ordinal());
 		this.villageId = input.getIntOr("Village", -1);
+		this.entityData.set(DATA_ENERGY, input.getFloatOr("Energy", MAX_ENERGY));
+		this.entityData.set(DATA_RESTING, input.getBooleanOr("Resting", false));
+		this.condemned = input.getBooleanOr("Condemned", false);
 		this.ruler = input.read("Ruler", UUIDUtil.CODEC).orElse(null);
 		input.read("Home", BlockPos.CODEC).ifPresent(home -> setHomeTo(home, ClaimedVillage.RADIUS));
 		readInventoryFromTag(input);

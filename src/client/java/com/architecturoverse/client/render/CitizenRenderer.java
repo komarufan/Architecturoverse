@@ -11,6 +11,7 @@ import net.minecraft.client.renderer.entity.layers.VillagerProfessionLayer;
 import net.minecraft.client.renderer.entity.state.HoldingEntityRenderState;
 import net.minecraft.client.renderer.entity.state.VillagerRenderState;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.EntityAttachment;
 
 /** Draws citizens exactly like vanilla villagers; the profession overlay shows their job. */
 public class CitizenRenderer extends MobRenderer<CitizenEntity, VillagerRenderState, VillagerModel> {
@@ -43,5 +44,7 @@ public class CitizenRenderer extends MobRenderer<CitizenEntity, VillagerRenderSt
 		super.extractRenderState(entity, state, partialTicks);
 		HoldingEntityRenderState.extractHoldingEntityRenderState(entity, state, this.itemModelResolver);
 		state.villagerData = entity.getLook();
+		// The energy bar is drawn as the line under the name, which also needs a spot when the name is hidden.
+		state.nameTagAttachment = entity.getAttachments().getNullable(EntityAttachment.NAME_TAG, 0, entity.getYRot(partialTicks));
 	}
 }

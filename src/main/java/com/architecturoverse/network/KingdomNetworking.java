@@ -4,12 +4,18 @@ import com.architecturoverse.block.WarehouseBlockEntity;
 import com.architecturoverse.citizen.CitizenEntity;
 import com.architecturoverse.citizen.CitizenJob;
 import com.architecturoverse.citizen.CitizenMode;
+import com.architecturoverse.kingdom.ArmyOrder;
 import com.architecturoverse.kingdom.BuildOrder;
 import com.architecturoverse.kingdom.CitizenRecord;
 import com.architecturoverse.kingdom.ClaimedVillage;
 import com.architecturoverse.kingdom.Kingdom;
 import com.architecturoverse.kingdom.KingdomManager;
 import com.architecturoverse.kingdom.MineSite;
+import com.architecturoverse.structure.Material;
+import com.architecturoverse.structure.StructureType;
+import com.architecturoverse.village.Army;
+import com.architecturoverse.village.Constructions;
+import com.architecturoverse.village.Executions;
 import com.architecturoverse.village.VillageOrders;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +44,7 @@ public final class KingdomNetworking {
 		PayloadTypeRegistry.serverboundPlay().register(RequestKingdomPayload.TYPE, RequestKingdomPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(CitizenCommandPayload.TYPE, CitizenCommandPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(VillageOrderPayload.TYPE, VillageOrderPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(KingdomActionPayload.TYPE, KingdomActionPayload.CODEC);
 
 		ServerPlayNetworking.registerGlobalReceiver(RequestKingdomPayload.TYPE,
 			(payload, context) -> openKingdomScreen(context.player(), null));
@@ -51,6 +58,17 @@ public final class KingdomNetworking {
 		ServerPlayNetworking.registerGlobalReceiver(VillageOrderPayload.TYPE, (payload, context) -> {
 			if (VillageOrders.order(context.player(), payload.villageId(), BuildOrder.byId(payload.order()))) {
 				sendSnapshot(context.player(), null);
+			}
+		});
+		ServerPlayNetworking.registerGlobalReceiver(KingdomActionPayload.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			boolean changed = switch (payload.action()) {
+				case BUILD_STRUCTURE -> Constructions.start(player, payload.villageId(), StructureType.byId(payload.value()));
+				case ARMY_ORDER -> Army.order(player, payload.villageId(), ArmyOrder.byId(payload.value()));
+				case SENTENCE -> payload.citizen().isPresent() && Executions.sentence(player, payload.citizen().get(), payload.value() == 1);
+			};
+			if (changed) {
+				sendSnapshot(player, payload.citizen().orElse(null));
 			}
 		});
 	}
@@ -73,12 +91,26 @@ public final class KingdomNetworking {
 		List<KingdomSnapshotPayload.VillageInfo> villages = kingdom.villages().stream()
 			.map(v -> new KingdomSnapshotPayload.VillageInfo(v.id(), v.dimension().identifier().toString(), v.center(),
 				kingdom.population(v.id()), v.warehouse().isPresent(), v.mine().map(MineSite::progress).orElse(-1),
-				warehouseStock(player.level().getServer(), v), v.orders().stream().map(BuildOrder::ordinal).toList()))
+				warehouseStock(player.level().getServer(), v), v.orders().stream().map(BuildOrder::ordinal).toList(),
+				v.militaryBase().isPresent(), constructionInfo(player.level().getServer(), v), v.armyOrder().ordinal()))
 			.toList();
 		List<KingdomSnapshotPayload.CitizenInfo> citizens = kingdom.citizens().stream()
-			.map(c -> new KingdomSnapshotPayload.CitizenInfo(c.uuid(), c.name(), c.job().ordinal(), c.mode().ordinal(), c.villageId()))
+			.map(c -> new KingdomSnapshotPayload.CitizenInfo(c.uuid(), c.name(), c.job().ordinal(), c.mode().ordinal(), c.villageId(),
+				c.condemned()))
 			.toList();
 		ServerPlayNetworking.send(player, new KingdomSnapshotPayload(kingdom.ownerName(), villages, citizens, Optional.ofNullable(focus)));
+	}
+
+	/** Progress of the village building site, if it has one and it is loaded. */
+	private static Optional<KingdomSnapshotPayload.ConstructionInfo> constructionInfo(MinecraftServer server, ClaimedVillage village) {
+		ServerLevel level = server.getLevel(village.dimension());
+		return village.construction()
+			.filter(site -> level != null && level.isLoaded(site.origin()))
+			.map(site -> {
+				Map<Material, Integer> left = Constructions.remaining(level, site);
+				return new KingdomSnapshotPayload.ConstructionInfo(site.type().ordinal(), Constructions.percentDone(level, site),
+					left.getOrDefault(Material.WOOD, 0), left.getOrDefault(Material.STONE, 0));
+			});
 	}
 
 	/** The most plentiful items in the village warehouse, merged by item type. Empty if not loaded. */

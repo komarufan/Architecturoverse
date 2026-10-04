@@ -18,31 +18,56 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
-/** Works through the village's build orders: picks a site, walks there and puts the building up. */
+/**
+ * Works through the village's build orders (picks a site, walks there and puts the block up)
+ * and, when there are none, works on the village building site.
+ */
 public class BuilderAI extends WorkerAI {
 	private static final int BUILD_TICKS = 100;
 
 	private @Nullable BuildOrder order;
 	private SiteFinder.@Nullable Site site;
 	private int buildProgress;
+	private final ConstructionAI construction;
 
 	public BuilderAI(CitizenEntity citizen) {
 		super(citizen);
+		this.construction = new ConstructionAI(citizen);
+	}
+
+	private boolean hasOrders() {
+		return citizen.getVillage().map(v -> !v.orders().isEmpty()).orElse(false);
 	}
 
 	@Override
 	public boolean hasWork() {
-		return citizen.getVillage().map(v -> !v.orders().isEmpty()).orElse(false);
+		return hasOrders() || construction.hasWork();
+	}
+
+	@Override
+	public int keepCount(ItemStack stack) {
+		return construction.keepCount(stack);
+	}
+
+	@Override
+	public void stop() {
+		super.stop();
+		construction.stop();
 	}
 
 	@Override
 	public void tick() {
 		Optional<ClaimedVillage> village = citizen.getVillage();
-		if (village.isEmpty() || village.get().orders().isEmpty()) {
+		if (village.isEmpty()) {
+			return;
+		}
+		if (village.get().orders().isEmpty()) {
+			construction.tick();
 			return;
 		}
 		BuildOrder next = village.get().orders().getFirst();

@@ -19,14 +19,22 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 	public static final StreamCodec<RegistryFriendlyByteBuf, KingdomSnapshotPayload> CODEC =
 		StreamCodec.ofMember(KingdomSnapshotPayload::write, KingdomSnapshotPayload::read);
 
-	/** {@code mineProgress} is -1 without a mine; {@code stock} lists the warehouse's most plentiful items, {@code orders} the queued build orders. */
-	public record VillageInfo(int id, String dimension, BlockPos center, int population, boolean warehouse, int mineProgress, List<StockEntry> stock, List<Integer> orders) {
+	/**
+	 * {@code mineProgress} is -1 without a mine; {@code stock} lists the warehouse's most plentiful items,
+	 * {@code orders} the queued build orders. {@code construction} describes the building site, if any.
+	 */
+	public record VillageInfo(int id, String dimension, BlockPos center, int population, boolean warehouse, int mineProgress,
+		List<StockEntry> stock, List<Integer> orders, boolean militaryBase, Optional<ConstructionInfo> construction, int armyOrder) {
 	}
 
 	public record StockEntry(ItemStack item, int count) {
 	}
 
-	public record CitizenInfo(UUID uuid, String name, int job, int mode, int villageId) {
+	/** A building site: structure type id, percent done and the blocks of wood and stone still to place. */
+	public record ConstructionInfo(int type, int percent, int woodLeft, int stoneLeft) {
+	}
+
+	public record CitizenInfo(UUID uuid, String name, int job, int mode, int villageId, boolean condemned) {
 	}
 
 	private void write(RegistryFriendlyByteBuf buf) {
@@ -43,6 +51,15 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 				b2.writeVarInt(s.count());
 			});
 			b.writeCollection(v.orders(), (b2, o) -> b2.writeVarInt(o));
+			b.writeBoolean(v.militaryBase());
+			b.writeBoolean(v.construction().isPresent());
+			v.construction().ifPresent(c -> {
+				b.writeVarInt(c.type());
+				b.writeVarInt(c.percent());
+				b.writeVarInt(c.woodLeft());
+				b.writeVarInt(c.stoneLeft());
+			});
+			b.writeVarInt(v.armyOrder());
 		});
 		buf.writeCollection(citizens, (b, c) -> {
 			b.writeUUID(c.uuid());
@@ -50,6 +67,7 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 			b.writeVarInt(c.job());
 			b.writeVarInt(c.mode());
 			b.writeVarInt(c.villageId());
+			b.writeBoolean(c.condemned());
 		});
 		buf.writeBoolean(focus.isPresent());
 		focus.ifPresent(buf::writeUUID);
@@ -58,8 +76,14 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 	private static KingdomSnapshotPayload read(RegistryFriendlyByteBuf buf) {
 		String ownerName = buf.readUtf();
 		List<VillageInfo> villages = buf.readList(b -> new VillageInfo(b.readVarInt(), b.readUtf(), b.readBlockPos(), b.readVarInt(),
-			b.readBoolean(), b.readVarInt(), b.readList(b2 -> new StockEntry(ItemStack.STREAM_CODEC.decode(buf), b2.readVarInt())), b.readList(b2 -> b2.readVarInt())));
-		List<CitizenInfo> citizens = buf.readList(b -> new CitizenInfo(b.readUUID(), b.readUtf(), b.readVarInt(), b.readVarInt(), b.readVarInt()));
+			b.readBoolean(), b.readVarInt(),
+			b.readList(b2 -> new StockEntry(ItemStack.STREAM_CODEC.decode(buf), b2.readVarInt())),
+			b.readList(b2 -> b2.readVarInt()),
+			b.readBoolean(),
+			b.readBoolean() ? Optional.of(new ConstructionInfo(b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt())) : Optional.empty(),
+			b.readVarInt()));
+		List<CitizenInfo> citizens = buf.readList(b -> new CitizenInfo(b.readUUID(), b.readUtf(), b.readVarInt(), b.readVarInt(), b.readVarInt(),
+			b.readBoolean()));
 		Optional<UUID> focus = buf.readBoolean() ? Optional.of(buf.readUUID()) : Optional.empty();
 		return new KingdomSnapshotPayload(ownerName, villages, citizens, focus);
 	}

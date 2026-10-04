@@ -8,7 +8,9 @@
 		"fabric-gametest": [
 			"com.architecturoverse.test.CaptureGameTests",
 			"com.architecturoverse.test.WorkerGameTests",
-			"com.architecturoverse.test.BuilderGameTests"
+			"com.architecturoverse.test.BuilderGameTests",
+			"com.architecturoverse.test.StructureGameTests",
+			"com.architecturoverse.test.MilitaryGameTests"
 		]
 	},
 	"depends": {
