@@ -1,10 +1,12 @@
 package com.architecturoverse.citizen.work;
 
+import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
@@ -15,6 +17,7 @@ import org.jspecify.annotations.Nullable;
 public class Walker {
 	private static final int STUCK_TICKS_BEFORE_TELEPORT = 160;
 	private static final double SPEED = 0.6;
+	private static final int ESCAPE_RADIUS = 12;
 
 	private final PathfinderMob mob;
 	private @Nullable BlockPos target;
@@ -79,6 +82,36 @@ public class Walker {
 		mob.getNavigation().stop();
 		mob.snapTo(best.getX() + 0.5, best.getY(), best.getZ() + 0.5, mob.getYRot(), mob.getXRot());
 		return true;
+	}
+
+	/** The spot to stand on at the top of this column, or empty if it is water, lava or not loaded. */
+	public static Optional<BlockPos> dryGround(Level level, int x, int z) {
+		if (!level.isLoaded(new BlockPos(x, level.getMinY(), z))) {
+			return Optional.empty();
+		}
+		BlockPos top = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+		return canStandAt(level, top) ? Optional.of(top) : Optional.empty();
+	}
+
+	/** Swims out: jumps to the nearest dry spot within a few blocks. Returns false if there is none. */
+	public boolean escapeWater() {
+		BlockPos here = mob.blockPosition();
+		for (int radius = 1; radius <= ESCAPE_RADIUS; radius++) {
+			for (int dx = -radius; dx <= radius; dx++) {
+				for (int dz = -radius; dz <= radius; dz++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
+						continue;
+					}
+					Optional<BlockPos> ground = dryGround(mob.level(), here.getX() + dx, here.getZ() + dz);
+					if (ground.isPresent()) {
+						mob.getNavigation().stop();
+						mob.snapTo(ground.get().getX() + 0.5, ground.get().getY(), ground.get().getZ() + 0.5, mob.getYRot(), mob.getXRot());
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	public static boolean canStandAt(Level level, BlockPos pos) {

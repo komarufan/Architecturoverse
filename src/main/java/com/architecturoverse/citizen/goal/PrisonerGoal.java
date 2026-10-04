@@ -15,7 +15,10 @@ import net.minecraft.world.phys.Vec3;
 public class PrisonerGoal extends Goal {
 	private static final double OPEN_GATE_DISTANCE_SQ = 4.0 * 4.0;
 
+	private static final int STEP_IN_AFTER_TICKS = 100;
+
 	private final CitizenEntity prisoner;
+	private int nearCellTicks;
 
 	public PrisonerGoal(CitizenEntity prisoner) {
 		this.prisoner = prisoner;
@@ -51,6 +54,14 @@ public class PrisonerGoal extends Goal {
 		}
 		if (prisoner.distanceToSqr(Vec3.atCenterOf(base.get().gate())) < OPEN_GATE_DISTANCE_SQ) {
 			Executions.setGate(level, base.get(), true);
+			// Right in front of the cell but not getting in (crowded doorway, odd block): step in directly.
+			if (++nearCellTicks > STEP_IN_AFTER_TICKS) {
+				prisoner.snapTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5, prisoner.getYRot(), prisoner.getXRot());
+				prisoner.getNavigation().stop();
+				return;
+			}
+		} else {
+			nearCellTicks = 0;
 		}
 		prisoner.walkTo(cell, 0.8);
 	}

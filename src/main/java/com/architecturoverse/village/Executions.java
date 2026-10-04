@@ -15,6 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -80,6 +81,10 @@ public final class Executions {
 	/** Opens or closes the prison cell gate. */
 	public static void setGate(ServerLevel level, MilitaryBase base, boolean open) {
 		BlockPos gate = base.gate();
+		// Bases built by older versions had bars right above the gate, leaving a doorway too low to walk through.
+		if (open && level.getBlockState(gate.above()).is(Blocks.IRON_BARS)) {
+			level.setBlockAndUpdate(gate.above(), Blocks.AIR.defaultBlockState());
+		}
 		BlockState state = level.getBlockState(gate);
 		if (state.getBlock() instanceof FenceGateBlock && state.getValue(FenceGateBlock.OPEN) != open) {
 			level.setBlockAndUpdate(gate, state.setValue(FenceGateBlock.OPEN, open));

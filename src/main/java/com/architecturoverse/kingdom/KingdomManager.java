@@ -48,6 +48,10 @@ public final class KingdomManager extends SavedData {
 		return Optional.ofNullable(kingdoms.get(owner));
 	}
 
+	public java.util.List<Kingdom> all() {
+		return java.util.List.copyOf(kingdoms.values());
+	}
+
 	public Kingdom getOrCreate(ServerPlayer player) {
 		Kingdom kingdom = kingdoms.computeIfAbsent(player.getUUID(), id -> new Kingdom(id, player.getPlainTextName()));
 		kingdom.ownerName = player.getPlainTextName();

@@ -10,7 +10,8 @@
 			"com.architecturoverse.test.WorkerGameTests",
 			"com.architecturoverse.test.BuilderGameTests",
 			"com.architecturoverse.test.StructureGameTests",
-			"com.architecturoverse.test.MilitaryGameTests"
+			"com.architecturoverse.test.MilitaryGameTests",
+			"com.architecturoverse.test.TradeGameTests"
 		]
 	},
 	"depends": {

@@ -2,14 +2,13 @@ package com.architecturoverse.citizen.goal;
 
 import com.architecturoverse.citizen.CitizenEntity;
 import com.architecturoverse.citizen.CitizenMode;
+import com.architecturoverse.citizen.work.Walker;
 import com.architecturoverse.kingdom.ClaimedVillage;
 import com.architecturoverse.kingdom.MilitaryBase;
 import java.util.EnumSet;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.level.levelgen.Heightmap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -86,14 +85,16 @@ public class SoldierGoal extends Goal {
 			BlockPos rally = base.get().rally();
 			return rally.offset(soldier.getRandom().nextIntBetweenInclusive(-3, 3), 0, soldier.getRandom().nextIntBetweenInclusive(-2, 2));
 		}
-		ServerLevel level = (ServerLevel) soldier.level();
-		int x = village.center().getX() + soldier.getRandom().nextIntBetweenInclusive(-PATROL_RADIUS, PATROL_RADIUS);
-		int z = village.center().getZ() + soldier.getRandom().nextIntBetweenInclusive(-PATROL_RADIUS, PATROL_RADIUS);
-		BlockPos column = new BlockPos(x, village.center().getY(), z);
-		if (!level.isLoaded(column)) {
-			return null;
+		// Several tries, because a random spot may well be in a pond or the river.
+		for (int attempt = 0; attempt < 10; attempt++) {
+			int x = village.center().getX() + soldier.getRandom().nextIntBetweenInclusive(-PATROL_RADIUS, PATROL_RADIUS);
+			int z = village.center().getZ() + soldier.getRandom().nextIntBetweenInclusive(-PATROL_RADIUS, PATROL_RADIUS);
+			Optional<BlockPos> ground = Walker.dryGround(soldier.level(), x, z);
+			if (ground.isPresent()) {
+				return ground.get();
+			}
 		}
-		return new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+		return null;
 	}
 
 	/** Spreads soldiers over a 3x3 grid around the point, two blocks apart. */

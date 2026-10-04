@@ -92,6 +92,8 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 	private int villageId = -1;
 	private boolean syncedWithKingdom;
 	private boolean condemned;
+	private int ticksInWater;
+	private static final int ESCAPE_WATER_TICKS = 200;
 	private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
 	private final Walker walker = new Walker(this);
 	private @Nullable WorkerAI workerAI;
@@ -384,6 +386,14 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		if (!syncedWithKingdom && ruler != null) {
 			syncedWithKingdom = true;
 			syncFromKingdom(level);
+		}
+		// Mobs that wander into a pond or the river often cannot climb back out on their own.
+		if (isInWater() && getMode() != CitizenMode.FOLLOW) {
+			if (++ticksInWater > ESCAPE_WATER_TICKS && walker.escapeWater()) {
+				ticksInWater = 0;
+			}
+		} else {
+			ticksInWater = 0;
 		}
 	}
 

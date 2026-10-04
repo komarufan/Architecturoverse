@@ -91,7 +91,7 @@ public enum StructureType {
 			"G.........G",
 			"S.........S",
 			"G.........G",
-			"S......IIIS",
+			"S......I.IS", // head room above the cell gate
 			"S......I.IS",
 			"S......IIIS",
 			"LSSGSSSGSSL"};

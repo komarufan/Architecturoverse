@@ -13,6 +13,7 @@ import com.architecturoverse.kingdom.KingdomManager;
 import com.architecturoverse.kingdom.MineSite;
 import com.architecturoverse.structure.Material;
 import com.architecturoverse.structure.StructureType;
+import com.architecturoverse.trade.Traders;
 import com.architecturoverse.village.Army;
 import com.architecturoverse.village.Constructions;
 import com.architecturoverse.village.Executions;
@@ -66,6 +67,8 @@ public final class KingdomNetworking {
 				case BUILD_STRUCTURE -> Constructions.start(player, payload.villageId(), StructureType.byId(payload.value()));
 				case ARMY_ORDER -> Army.order(player, payload.villageId(), ArmyOrder.byId(payload.value()));
 				case SENTENCE -> payload.citizen().isPresent() && Executions.sentence(player, payload.citizen().get(), payload.value() == 1);
+				case CALL_TRADER -> Traders.call(player, payload.villageId());
+				case ROB_TRADER -> Traders.rob(player, payload.villageId());
 			};
 			if (changed) {
 				sendSnapshot(player, payload.citizen().orElse(null));
@@ -92,13 +95,20 @@ public final class KingdomNetworking {
 			.map(v -> new KingdomSnapshotPayload.VillageInfo(v.id(), v.dimension().identifier().toString(), v.center(),
 				kingdom.population(v.id()), v.warehouse().isPresent(), v.mine().map(MineSite::progress).orElse(-1),
 				warehouseStock(player.level().getServer(), v), v.orders().stream().map(BuildOrder::ordinal).toList(),
-				v.militaryBase().isPresent(), constructionInfo(player.level().getServer(), v), v.armyOrder().ordinal()))
+				v.militaryBase().isPresent(), constructionInfo(player.level().getServer(), v), v.armyOrder().ordinal(),
+				traderPresent(player, v), v.raidAt() > 0))
 			.toList();
 		List<KingdomSnapshotPayload.CitizenInfo> citizens = kingdom.citizens().stream()
 			.map(c -> new KingdomSnapshotPayload.CitizenInfo(c.uuid(), c.name(), c.job().ordinal(), c.mode().ordinal(), c.villageId(),
 				c.condemned()))
 			.toList();
 		ServerPlayNetworking.send(player, new KingdomSnapshotPayload(kingdom.ownerName(), villages, citizens, Optional.ofNullable(focus)));
+	}
+
+	/** Whether the travelling merchant is on his way to or from this village. */
+	private static boolean traderPresent(ServerPlayer player, ClaimedVillage village) {
+		ServerLevel level = player.level().getServer().getLevel(village.dimension());
+		return level != null && Traders.find(level, player.getUUID(), village).isPresent();
 	}
 
 	/** Progress of the village building site, if it has one and it is loaded. */

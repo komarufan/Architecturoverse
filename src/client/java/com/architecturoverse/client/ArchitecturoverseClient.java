@@ -2,6 +2,8 @@ package com.architecturoverse.client;
 
 import com.architecturoverse.Architecturoverse;
 import com.architecturoverse.client.render.CitizenRenderer;
+import com.architecturoverse.client.render.EnemySoldierRenderer;
+import com.architecturoverse.client.render.TraderRenderer;
 import com.architecturoverse.client.screen.KingdomScreen;
 import com.architecturoverse.network.KingdomSnapshotPayload;
 import com.architecturoverse.network.RequestKingdomPayload;
@@ -22,6 +24,8 @@ public class ArchitecturoverseClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		EntityRendererRegistry.register(ModEntities.CITIZEN, CitizenRenderer::new);
+		EntityRendererRegistry.register(ModEntities.TRADER, TraderRenderer::new);
+		EntityRendererRegistry.register(ModEntities.ENEMY_SOLDIER, EnemySoldierRenderer::new);
 
 		openKingdom = KeyMappingHelper.registerKeyMapping(
 			new KeyMapping("key.architecturoverse.kingdom", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, CATEGORY));

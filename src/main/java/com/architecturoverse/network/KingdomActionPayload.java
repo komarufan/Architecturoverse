@@ -18,7 +18,11 @@ public record KingdomActionPayload(Action action, int villageId, int value, Opti
 		/** value: army order id; a rally point is the ruler's current position. */
 		ARMY_ORDER,
 		/** value: 1 to condemn, 0 to pardon. */
-		SENTENCE
+		SENTENCE,
+		/** Calls the travelling merchant to the village. */
+		CALL_TRADER,
+		/** Sends the village soldiers after the merchant. */
+		ROB_TRADER
 	}
 
 	public static final CustomPacketPayload.Type<KingdomActionPayload> TYPE =

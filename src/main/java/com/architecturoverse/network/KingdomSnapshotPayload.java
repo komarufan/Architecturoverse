@@ -24,7 +24,8 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 	 * {@code orders} the queued build orders. {@code construction} describes the building site, if any.
 	 */
 	public record VillageInfo(int id, String dimension, BlockPos center, int population, boolean warehouse, int mineProgress,
-		List<StockEntry> stock, List<Integer> orders, boolean militaryBase, Optional<ConstructionInfo> construction, int armyOrder) {
+		List<StockEntry> stock, List<Integer> orders, boolean militaryBase, Optional<ConstructionInfo> construction, int armyOrder,
+		boolean traderPresent, boolean raidIncoming) {
 	}
 
 	public record StockEntry(ItemStack item, int count) {
@@ -60,6 +61,8 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 				b.writeVarInt(c.stoneLeft());
 			});
 			b.writeVarInt(v.armyOrder());
+			b.writeBoolean(v.traderPresent());
+			b.writeBoolean(v.raidIncoming());
 		});
 		buf.writeCollection(citizens, (b, c) -> {
 			b.writeUUID(c.uuid());
@@ -81,7 +84,9 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 			b.readList(b2 -> b2.readVarInt()),
 			b.readBoolean(),
 			b.readBoolean() ? Optional.of(new ConstructionInfo(b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt())) : Optional.empty(),
-			b.readVarInt()));
+			b.readVarInt(),
+			b.readBoolean(),
+			b.readBoolean()));
 		List<CitizenInfo> citizens = buf.readList(b -> new CitizenInfo(b.readUUID(), b.readUtf(), b.readVarInt(), b.readVarInt(), b.readVarInt(),
 			b.readBoolean()));
 		Optional<UUID> focus = buf.readBoolean() ? Optional.of(buf.readUUID()) : Optional.empty();

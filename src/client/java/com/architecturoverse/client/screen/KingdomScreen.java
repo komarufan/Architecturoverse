@@ -33,6 +33,8 @@ public class KingdomScreen extends Screen {
 	private static final int ROWS_PER_PAGE = 6;
 	private static final int CONTENT_TOP = 58;
 	private static final int ALL_VILLAGES = -1;
+	/** Offset of the merchant row on the structures tab. */
+	private static final int TRADER_ROW = 136;
 
 	private enum Tab { CITIZENS, STRUCTURES, ARMY }
 
@@ -247,6 +249,12 @@ public class KingdomScreen extends Screen {
 			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.military_base_hint")))
 			.build());
 		base.active = !village.militaryBase() && village.construction().isEmpty();
+		Button trader = addRenderableWidget(Button.builder(Component.translatable("screen.architecturoverse.call_trader"),
+				b -> ClientPlayNetworking.send(new KingdomActionPayload(KingdomActionPayload.Action.CALL_TRADER, village.id(), 0, Optional.empty())))
+			.bounds(x, y + TRADER_ROW, 120, 20)
+			.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.call_trader_hint")))
+			.build());
+		trader.active = village.warehouse() && !village.traderPresent();
 	}
 
 	/** "Build a warehouse" / "Found a mine": the order goes to the village builders. */
@@ -267,6 +275,14 @@ public class KingdomScreen extends Screen {
 		addArmyButton(x, y, ArmyOrder.RALLY, "screen.architecturoverse.army.rally");
 		addArmyButton(x, y + 24, ArmyOrder.BASE, "screen.architecturoverse.army.base");
 		addArmyButton(x, y + 48, ArmyOrder.PATROL, "screen.architecturoverse.army.patrol");
+		selectedVillageInfo().ifPresent(village -> {
+			Button rob = addRenderableWidget(Button.builder(Component.translatable("screen.architecturoverse.rob_trader").withStyle(ChatFormatting.GOLD),
+					b -> ClientPlayNetworking.send(new KingdomActionPayload(KingdomActionPayload.Action.ROB_TRADER, village.id(), 0, Optional.empty())))
+				.bounds(x, y + 76, 180, 20)
+				.tooltip(Tooltip.create(Component.translatable("screen.architecturoverse.rob_trader_hint")))
+				.build());
+			rob.active = village.traderPresent();
+		});
 	}
 
 	private void addArmyButton(int x, int y, ArmyOrder order, String key) {
@@ -384,6 +400,8 @@ public class KingdomScreen extends Screen {
 		}
 		graphics.text(font, baseStatus, x, y + 62, 0xFFFFFFFF);
 		village.construction().ifPresent(site -> extractConstruction(graphics, site, x, y + 90));
+		graphics.text(font, Component.translatable(village.traderPresent() ? "screen.architecturoverse.trader_here" : "screen.architecturoverse.trader_none")
+			.withStyle(village.traderPresent() ? ChatFormatting.GREEN : ChatFormatting.GRAY), x, y + TRADER_ROW + 6, 0xFFFFFFFF);
 	}
 
 	private void extractConstruction(GuiGraphicsExtractor graphics, ConstructionInfo site, int x, int y) {
@@ -401,7 +419,11 @@ public class KingdomScreen extends Screen {
 		selectedVillageInfo().ifPresent(village -> graphics.text(font, Component.translatable("screen.architecturoverse.current_order",
 			ArmyOrder.byId(village.armyOrder()).displayName()), x, y + 18, 0xFFFFFFFF));
 		if (soldiers == 0) {
-			graphics.text(font, Component.translatable("screen.architecturoverse.no_soldiers").withStyle(ChatFormatting.GRAY), x, y + 120, 0xFFFFFFFF);
+			graphics.text(font, Component.translatable("screen.architecturoverse.no_soldiers").withStyle(ChatFormatting.GRAY), x, y + 28, 0xFFFFFFFF);
+		}
+		if (data.villages().stream().anyMatch(v -> v.raidIncoming() && (selectedVillage == ALL_VILLAGES || v.id() == selectedVillage))) {
+			graphics.text(font, Component.translatable("screen.architecturoverse.raid_incoming").withStyle(ChatFormatting.RED, ChatFormatting.BOLD),
+				x, y + 144, 0xFFFFFFFF);
 		}
 	}
 
