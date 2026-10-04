@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "architecturoverse:block/mine_entrance" },
+    "facing=east": { "model": "architecturoverse:block/mine_entrance", "y": 90 },
+    "facing=south": { "model": "architecturoverse:block/mine_entrance", "y": 180 },
+    "facing=west": { "model": "architecturoverse:block/mine_entrance", "y": 270 }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "front": "architecturoverse:block/mine_entrance_front",
+    "side": "architecturoverse:block/mine_entrance_side",
+    "top": "architecturoverse:block/mine_entrance_side"
+  }
+}

@@ -21,18 +21,11 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
 public class CaptureGameTests {
-	// Tests run side by side in one world; keep them further apart than a village radius.
-	private static final int PADDING = 120;
-	private static final BlockPos BELL = new BlockPos(4, 1, 4);
+	private static final int PADDING = TestKingdoms.PADDING;
+	private static final BlockPos BELL = TestKingdoms.BELL;
 
 	private static FakePlayer setUp(GameTestHelper helper) {
-		KingdomManager.get(helper.getLevel().getServer()).clearForTests();
-		helper.setBlock(BELL, Blocks.BELL);
-		FakePlayer player = FakePlayer.get(helper.getLevel());
-		player.getInventory().clearContent();
-		player.setShiftKeyDown(false);
-		player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, new ItemStack(ModItems.SCEPTER));
-		return player;
+		return TestKingdoms.newRuler(helper);
 	}
 
 	private static Kingdom kingdomOf(GameTestHelper helper, FakePlayer player) {

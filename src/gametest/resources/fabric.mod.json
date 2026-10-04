@@ -5,7 +5,10 @@
 	"name": "Architecturoverse Game Tests",
 	"environment": "*",
 	"entrypoints": {
-		"fabric-gametest": ["com.architecturoverse.test.CaptureGameTests"]
+		"fabric-gametest": [
+			"com.architecturoverse.test.CaptureGameTests",
+			"com.architecturoverse.test.WorkerGameTests"
+		]
 	},
 	"depends": {
 		"architecturoverse": "*"

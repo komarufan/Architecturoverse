@@ -74,6 +74,49 @@ public final class KingdomManager extends SavedData {
 		return village;
 	}
 
+	public Optional<ClaimedVillage> updateVillage(Kingdom kingdom, int villageId, UnaryOperator<ClaimedVillage> change) {
+		for (int i = 0; i < kingdom.villages.size(); i++) {
+			ClaimedVillage village = kingdom.villages.get(i);
+			if (village.id() == villageId) {
+				ClaimedVillage updated = change.apply(village);
+				kingdom.villages.set(i, updated);
+				setDirty();
+				return Optional.of(updated);
+			}
+		}
+		return Optional.empty();
+	}
+
+	/** The village of this ruler nearest to {@code pos} whose center is at most {@code range} blocks away. */
+	public Optional<ClaimedVillage> nearestOwnVillage(UUID ruler, ResourceKey<Level> dimension, BlockPos pos, int range) {
+		return kingdom(ruler).flatMap(k -> k.villages.stream()
+			.filter(v -> v.contains(dimension, pos, range))
+			.min((a, b) -> Double.compare(a.center().distSqr(pos), b.center().distSqr(pos))));
+	}
+
+	/** Unregisters any warehouse or mine at this position, e.g. after the block was broken. */
+	public void forgetBlock(ResourceKey<Level> dimension, BlockPos pos) {
+		for (Kingdom kingdom : kingdoms.values()) {
+			for (int i = 0; i < kingdom.villages.size(); i++) {
+				ClaimedVillage village = kingdom.villages.get(i);
+				if (!village.dimension().equals(dimension)) {
+					continue;
+				}
+				ClaimedVillage updated = village;
+				if (village.warehouse().filter(pos::equals).isPresent()) {
+					updated = updated.withWarehouse(Optional.empty());
+				}
+				if (village.mine().filter(m -> m.entrance().equals(pos)).isPresent()) {
+					updated = updated.withMine(Optional.empty());
+				}
+				if (updated != village) {
+					kingdom.villages.set(i, updated);
+					setDirty();
+				}
+			}
+		}
+	}
+
 	public void putCitizen(Kingdom kingdom, CitizenRecord record) {
 		kingdom.citizens.put(record.uuid(), record);
 		setDirty();
@@ -95,12 +138,6 @@ public final class KingdomManager extends SavedData {
 		if (kingdom != null && kingdom.citizens.remove(citizen) != null) {
 			setDirty();
 		}
-	}
-
-	/** Forgets every kingdom. Game tests share one world, so each test starts from a clean slate. */
-	public void clearForTests() {
-		kingdoms.clear();
-		setDirty();
 	}
 
 	public record Claim(Kingdom kingdom, ClaimedVillage village) {

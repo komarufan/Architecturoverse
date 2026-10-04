@@ -8,6 +8,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.item.ItemStack;
 
 /** Server to client: everything the kingdom screen shows. Sent when the ruler opens the book and after every order. */
 public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> villages, List<CitizenInfo> citizens, Optional<UUID> focus)
@@ -18,7 +19,11 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 	public static final StreamCodec<RegistryFriendlyByteBuf, KingdomSnapshotPayload> CODEC =
 		StreamCodec.ofMember(KingdomSnapshotPayload::write, KingdomSnapshotPayload::read);
 
-	public record VillageInfo(int id, String dimension, BlockPos center, int population) {
+	/** {@code mineProgress} is -1 without a mine; {@code stock} lists the warehouse's most plentiful items. */
+	public record VillageInfo(int id, String dimension, BlockPos center, int population, boolean warehouse, int mineProgress, List<StockEntry> stock) {
+	}
+
+	public record StockEntry(ItemStack item, int count) {
 	}
 
 	public record CitizenInfo(UUID uuid, String name, int job, int mode, int villageId) {
@@ -31,6 +36,12 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 			b.writeUtf(v.dimension());
 			b.writeBlockPos(v.center());
 			b.writeVarInt(v.population());
+			b.writeBoolean(v.warehouse());
+			b.writeVarInt(v.mineProgress());
+			b.writeCollection(v.stock(), (b2, s) -> {
+				ItemStack.STREAM_CODEC.encode(buf, s.item());
+				b2.writeVarInt(s.count());
+			});
 		});
 		buf.writeCollection(citizens, (b, c) -> {
 			b.writeUUID(c.uuid());
@@ -45,7 +56,8 @@ public record KingdomSnapshotPayload(String ownerName, List<VillageInfo> village
 
 	private static KingdomSnapshotPayload read(RegistryFriendlyByteBuf buf) {
 		String ownerName = buf.readUtf();
-		List<VillageInfo> villages = buf.readList(b -> new VillageInfo(b.readVarInt(), b.readUtf(), b.readBlockPos(), b.readVarInt()));
+		List<VillageInfo> villages = buf.readList(b -> new VillageInfo(b.readVarInt(), b.readUtf(), b.readBlockPos(), b.readVarInt(),
+			b.readBoolean(), b.readVarInt(), b.readList(b2 -> new StockEntry(ItemStack.STREAM_CODEC.decode(buf), b2.readVarInt()))));
 		List<CitizenInfo> citizens = buf.readList(b -> new CitizenInfo(b.readUUID(), b.readUtf(), b.readVarInt(), b.readVarInt(), b.readVarInt()));
 		Optional<UUID> focus = buf.readBoolean() ? Optional.of(buf.readUUID()) : Optional.empty();
 		return new KingdomSnapshotPayload(ownerName, villages, citizens, focus);

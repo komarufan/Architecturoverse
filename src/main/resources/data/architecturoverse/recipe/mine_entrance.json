@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:stone_pickaxe",
+    "minecraft:emerald"
+  ],
+  "result": {
+    "id": "architecturoverse:mine_entrance"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "architecturoverse:block/warehouse" },
+    "facing=east": { "model": "architecturoverse:block/warehouse", "y": 90 },
+    "facing=south": { "model": "architecturoverse:block/warehouse", "y": 180 },
+    "facing=west": { "model": "architecturoverse:block/warehouse", "y": 270 }
+  }
+}

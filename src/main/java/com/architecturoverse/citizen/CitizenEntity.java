@@ -1,10 +1,17 @@
 package com.architecturoverse.citizen;
 
 import com.architecturoverse.citizen.goal.FollowRulerGoal;
+import com.architecturoverse.citizen.goal.WorkGoal;
+import com.architecturoverse.citizen.work.FarmerAI;
+import com.architecturoverse.citizen.work.LumberjackAI;
+import com.architecturoverse.citizen.work.MinerAI;
+import com.architecturoverse.citizen.work.Walker;
+import com.architecturoverse.citizen.work.WorkerAI;
 import com.architecturoverse.kingdom.CitizenRecord;
 import com.architecturoverse.kingdom.ClaimedVillage;
 import com.architecturoverse.kingdom.Kingdom;
 import com.architecturoverse.kingdom.KingdomManager;
+import com.architecturoverse.kingdom.RulerNotifier;
 import com.architecturoverse.network.KingdomNetworking;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,6 +25,7 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -38,11 +46,11 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.npc.InventoryCarrier;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.npc.villager.VillagerData;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
@@ -52,17 +60,22 @@ import org.jspecify.annotations.Nullable;
  * A villager that swore loyalty to a ruler. Uses plain goal-based AI instead of the
  * villager brain, so jobs can be added as simple goals.
  */
-public class CitizenEntity extends PathfinderMob {
+public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 	private static final EntityDataAccessor<VillagerData> DATA_LOOK =
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.VILLAGER_DATA);
 	private static final EntityDataAccessor<Integer> DATA_JOB =
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.INT);
 	private static final EntityDataAccessor<Integer> DATA_MODE =
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.INT);
+	public static final int INVENTORY_SIZE = 12;
 
 	private @Nullable UUID ruler;
 	private int villageId = -1;
 	private boolean syncedWithKingdom;
+	private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
+	private final Walker walker = new Walker(this);
+	private @Nullable WorkerAI workerAI;
+	private @Nullable CitizenJob workerAIJob;
 
 	public CitizenEntity(EntityType<? extends CitizenEntity> type, Level level) {
 		super(type, level);
@@ -107,6 +120,7 @@ public class CitizenEntity extends PathfinderMob {
 			}
 		});
 		this.goalSelector.addGoal(2, new FollowRulerGoal(this, 0.7, 5.0F, 24.0F));
+		this.goalSelector.addGoal(3, new WorkGoal(this));
 		this.goalSelector.addGoal(3, new OpenDoorGoal(this, true));
 		this.goalSelector.addGoal(4, new MoveTowardsRestrictionGoal(this, 0.6) {
 			@Override
@@ -186,13 +200,66 @@ public class CitizenEntity extends PathfinderMob {
 	public void applyJob(CitizenJob job) {
 		this.entityData.set(DATA_JOB, job.ordinal());
 		this.entityData.set(DATA_LOOK, getLook().withProfession(BuiltInRegistries.VILLAGER_PROFESSION.getOrThrow(job.look())));
-		if (job == CitizenJob.SOLDIER) {
-			if (getMainHandItem().isEmpty()) {
-				setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
-			}
-		} else {
-			setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+		setItemSlot(EquipmentSlot.MAINHAND, job.tool());
+		if (job != CitizenJob.SOLDIER) {
 			setTarget(null);
+		}
+	}
+
+	// ---- work --------------------------------------------------------------------------------
+
+	@Override
+	public SimpleContainer getInventory() {
+		return inventory;
+	}
+
+	public Walker getWalker() {
+		return walker;
+	}
+
+	public boolean walkTo(BlockPos target, double reach) {
+		return walker.walkTo(target, reach);
+	}
+
+	/** The brain for the current job, or null for jobs that are not about gathering (unemployed, soldier). */
+	public @Nullable WorkerAI getWorkerAI() {
+		CitizenJob job = getJob();
+		if (workerAIJob != job) {
+			if (workerAI != null) {
+				workerAI.stop();
+			}
+			workerAIJob = job;
+			workerAI = switch (job) {
+				case LUMBERJACK -> new LumberjackAI(this);
+				case MINER -> new MinerAI(this);
+				case FARMER -> new FarmerAI(this);
+				case UNEMPLOYED, SOLDIER -> null;
+			};
+		}
+		return workerAI;
+	}
+
+	public Optional<KingdomManager> getKingdomManager() {
+		return level() instanceof ServerLevel serverLevel ? Optional.of(KingdomManager.get(serverLevel.getServer())) : Optional.empty();
+	}
+
+	public Optional<Kingdom> getKingdom() {
+		return ruler == null ? Optional.empty() : getKingdomManager().flatMap(m -> m.kingdom(ruler));
+	}
+
+	public Optional<ClaimedVillage> getVillage() {
+		return getKingdom().flatMap(k -> k.village(villageId));
+	}
+
+	public Optional<BlockPos> getWarehousePos() {
+		return getVillage().flatMap(ClaimedVillage::warehouse);
+	}
+
+	/** Tells the ruler about a problem in this citizen's village (rate-limited). */
+	public void notifyRuler(String translationKey) {
+		ServerPlayer player = getRulerPlayer();
+		if (player != null) {
+			RulerNotifier.notify(player, villageId, translationKey);
 		}
 	}
 
@@ -281,7 +348,10 @@ public class CitizenEntity extends PathfinderMob {
 
 	@Override
 	protected void dropCustomDeathLoot(ServerLevel level, DamageSource source, boolean killedByPlayer) {
-		// Job tools are handed out for free, so they must not drop.
+		// Job tools are handed out for free, so they must not drop; what the citizen carried does.
+		for (ItemStack stack : inventory.removeAllItems()) {
+			spawnAtLocation(level, stack);
+		}
 	}
 
 	@Override
@@ -304,6 +374,7 @@ public class CitizenEntity extends PathfinderMob {
 		if (hasHome()) {
 			output.store("Home", BlockPos.CODEC, getHomePosition());
 		}
+		writeInventoryToTag(output);
 	}
 
 	@Override
@@ -315,6 +386,7 @@ public class CitizenEntity extends PathfinderMob {
 		this.villageId = input.getIntOr("Village", -1);
 		this.ruler = input.read("Ruler", UUIDUtil.CODEC).orElse(null);
 		input.read("Home", BlockPos.CODEC).ifPresent(home -> setHomeTo(home, ClaimedVillage.RADIUS));
+		readInventoryFromTag(input);
 		this.syncedWithKingdom = false;
 	}
 }

@@ -1,6 +1,7 @@
 package com.architecturoverse;
 
 import com.architecturoverse.network.KingdomNetworking;
+import com.architecturoverse.registry.ModBlocks;
 import com.architecturoverse.registry.ModEntities;
 import com.architecturoverse.registry.ModItems;
 import com.architecturoverse.village.CaptureHandler;
@@ -15,6 +16,7 @@ public class Architecturoverse implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		ModBlocks.init();
 		ModItems.init();
 		ModEntities.init();
 		KingdomNetworking.init();

@@ -26,6 +26,8 @@ public final class ModItems {
 			.displayItems((parameters, output) -> {
 				output.accept(SCEPTER);
 				output.accept(RULER_BOOK);
+				output.accept(ModBlocks.WAREHOUSE);
+				output.accept(ModBlocks.MINE_ENTRANCE);
 			})
 			.build());
 

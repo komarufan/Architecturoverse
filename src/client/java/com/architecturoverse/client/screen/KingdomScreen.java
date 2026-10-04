@@ -7,6 +7,7 @@ import com.architecturoverse.network.KingdomSnapshotPayload;
 import com.architecturoverse.network.KingdomSnapshotPayload.CitizenInfo;
 import com.architecturoverse.network.KingdomSnapshotPayload.VillageInfo;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.ChatFormatting;
@@ -20,10 +21,10 @@ import org.jspecify.annotations.Nullable;
 /** The ruler's book: villages on the left, citizens of the selected village on the right. */
 public class KingdomScreen extends Screen {
 	private static final int PANEL_WIDTH = 380;
-	private static final int PANEL_HEIGHT = 230;
+	private static final int PANEL_HEIGHT = 256;
 	private static final int VILLAGE_COLUMN = 110;
 	private static final int ROW_HEIGHT = 22;
-	private static final int ROWS_PER_PAGE = 7;
+	private static final int ROWS_PER_PAGE = 6;
 	private static final int ALL_VILLAGES = -1;
 
 	private KingdomSnapshotPayload data;
@@ -163,10 +164,36 @@ public class KingdomScreen extends Screen {
 
 		int bottom = top + PANEL_HEIGHT - 28;
 		graphics.centeredText(font, Component.translatable("screen.architecturoverse.page", page + 1, pageCount()), listX + 45, bottom + 6, 0xFFFFFFFF);
+		selectedVillageInfo().ifPresent(village -> extractVillageStatus(graphics, village, listX, bottom - 30));
 		graphics.centeredText(font, Component.translatable("screen.architecturoverse.hint").withStyle(ChatFormatting.ITALIC),
 			left + PANEL_WIDTH / 2, top + PANEL_HEIGHT + 6, 0xFFAAAAAA);
 
 		super.extractRenderState(graphics, mouseX, mouseY, a);
+	}
+
+	private Optional<VillageInfo> selectedVillageInfo() {
+		return data.villages().stream().filter(v -> v.id() == selectedVillage).findFirst();
+	}
+
+	/** Warehouse and mine status plus the warehouse's biggest stocks, shown under the citizen list. */
+	private void extractVillageStatus(GuiGraphicsExtractor graphics, VillageInfo village, int x, int y) {
+		Component warehouse = Component.translatable(village.warehouse()
+			? "screen.architecturoverse.warehouse_yes" : "screen.architecturoverse.warehouse_no")
+			.withStyle(village.warehouse() ? ChatFormatting.GREEN : ChatFormatting.RED);
+		Component mine = village.mineProgress() >= 0
+			? Component.translatable("screen.architecturoverse.mine_yes", village.mineProgress()).withStyle(ChatFormatting.GREEN)
+			: Component.translatable("screen.architecturoverse.mine_no").withStyle(ChatFormatting.GRAY);
+		graphics.text(font, Component.empty().append(warehouse).append("  ").append(mine), x, y - 10, 0xFFFFFFFF);
+		int itemX = x;
+		for (KingdomSnapshotPayload.StockEntry entry : village.stock()) {
+			graphics.item(entry.item(), itemX, y);
+			graphics.text(font, compactCount(entry.count()), itemX + 17, y + 9, 0xFFFFFFFF);
+			itemX += 40;
+		}
+	}
+
+	private static String compactCount(int count) {
+		return count >= 10000 ? count / 1000 + "k" : String.valueOf(count);
 	}
 
 	@Override
