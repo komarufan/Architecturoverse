@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "architecturoverse",
+	"version": "${version}",
+	"name": "Architecturoverse",
+	"description": "Capture villages, rule your citizens, build, mine and wage war.",
+	"authors": ["stenew88"],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["com.architecturoverse.Architecturoverse"],
+		"client": ["com.architecturoverse.client.ArchitecturoverseClient"]
+	},
+	"mixins": [
+		"architecturoverse.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
