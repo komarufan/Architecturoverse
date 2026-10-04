@@ -1,5 +1,9 @@
 package com.architecturoverse;
 
+import com.architecturoverse.network.KingdomNetworking;
+import com.architecturoverse.registry.ModEntities;
+import com.architecturoverse.registry.ModItems;
+import com.architecturoverse.village.CaptureHandler;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
@@ -11,6 +15,10 @@ public class Architecturoverse implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		ModItems.init();
+		ModEntities.init();
+		KingdomNetworking.init();
+		CaptureHandler.init();
 		LOGGER.info("Architecturoverse loaded");
 	}
 

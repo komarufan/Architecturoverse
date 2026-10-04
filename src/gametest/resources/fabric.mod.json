@@ -1,0 +1,13 @@
+{
+	"schemaVersion": 1,
+	"id": "architecturoverse-gametest",
+	"version": "1.0.0",
+	"name": "Architecturoverse Game Tests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": ["com.architecturoverse.test.CaptureGameTests"]
+	},
+	"depends": {
+		"architecturoverse": "*"
+	}
+}

@@ -1,0 +1,41 @@
+{
+  "itemGroup.architecturoverse": "Архитектуроверс",
+  "item.architecturoverse.scepter": "Скипетр власти",
+  "item.architecturoverse.scepter.tooltip1": "ПКМ по колоколу деревни — захватить власть",
+  "item.architecturoverse.scepter.tooltip2": "Shift+ПКМ — откупиться от големов изумрудами",
+  "item.architecturoverse.ruler_book": "Книга правителя",
+  "item.architecturoverse.ruler_book.tooltip": "ПКМ или клавиша K — управление королевством",
+  "entity.architecturoverse.citizen": "Подданный",
+
+  "job.architecturoverse.unemployed": "Без работы",
+  "job.architecturoverse.soldier": "Солдат",
+  "mode.architecturoverse.work": "Работать",
+  "mode.architecturoverse.follow": "За мной",
+  "mode.architecturoverse.stay": "Стоять",
+
+  "message.architecturoverse.citizen_mode": "%s: %s",
+  "message.architecturoverse.citizen_died": "Ваш подданный %s погиб",
+  "message.architecturoverse.already_yours": "Эта деревня уже принадлежит вам",
+  "message.architecturoverse.owned_by_other": "Эта деревня принадлежит королевству %s",
+  "message.architecturoverse.no_villagers": "Здесь нет жителей — некем править",
+  "message.architecturoverse.golems_defend": "Стража деревни восстала! Победите големов (%s) или откупитесь: Shift+ПКМ скипетром по колоколу — %s изумрудов",
+  "message.architecturoverse.not_enough_emeralds": "Нужно %s изумрудов, чтобы откупиться от стражи",
+  "message.architecturoverse.first_village": "Вы основали королевство! Откройте Книгу правителя (ПКМ или клавиша K), чтобы раздать подданным работу.",
+  "message.architecturoverse.no_kingdom": "У вас пока нет королевства. Скрафтите Скипетр власти и ударьте им в колокол деревни.",
+  "title.architecturoverse.captured": "Деревня захвачена!",
+  "title.architecturoverse.captured.sub": "Вам присягнули подданных: %s",
+
+  "screen.architecturoverse.kingdom": "Королевство",
+  "screen.architecturoverse.kingdom_of": "Королевство %s",
+  "screen.architecturoverse.summary": "Деревень: %s  •  Подданных: %s",
+  "screen.architecturoverse.all_villages": "Все (%s)",
+  "screen.architecturoverse.village": "Деревня %s (%s)",
+  "screen.architecturoverse.no_citizens": "В этой деревне нет подданных",
+  "screen.architecturoverse.page": "%s / %s",
+  "screen.architecturoverse.job_hint": "Нажмите, чтобы сменить работу",
+  "screen.architecturoverse.mode_hint": "Нажмите, чтобы дать приказ: работать / идти за мной / стоять",
+  "screen.architecturoverse.hint": "Shift+ПКМ по подданному — «за мной» / «стоять»",
+
+  "key.architecturoverse.kingdom": "Открыть Книгу правителя",
+  "key.category.architecturoverse.main": "Архитектуроверс"
+}

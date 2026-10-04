@@ -1,0 +1,41 @@
+{
+  "itemGroup.architecturoverse": "Architecturoverse",
+  "item.architecturoverse.scepter": "Scepter of Power",
+  "item.architecturoverse.scepter.tooltip1": "Use on a village bell to seize power",
+  "item.architecturoverse.scepter.tooltip2": "Sneak + use to bribe the golems with emeralds",
+  "item.architecturoverse.ruler_book": "Ruler's Book",
+  "item.architecturoverse.ruler_book.tooltip": "Use or press K to manage your kingdom",
+  "entity.architecturoverse.citizen": "Citizen",
+
+  "job.architecturoverse.unemployed": "Unemployed",
+  "job.architecturoverse.soldier": "Soldier",
+  "mode.architecturoverse.work": "Work",
+  "mode.architecturoverse.follow": "Follow me",
+  "mode.architecturoverse.stay": "Stay",
+
+  "message.architecturoverse.citizen_mode": "%s: %s",
+  "message.architecturoverse.citizen_died": "Your citizen %s has died",
+  "message.architecturoverse.already_yours": "This village already belongs to you",
+  "message.architecturoverse.owned_by_other": "This village belongs to the kingdom of %s",
+  "message.architecturoverse.no_villagers": "There are no villagers here to rule",
+  "message.architecturoverse.golems_defend": "The village guard rises up! Defeat the golems (%s) or bribe them: sneak + use the scepter on the bell for %s emeralds",
+  "message.architecturoverse.not_enough_emeralds": "You need %s emeralds to bribe the guard",
+  "message.architecturoverse.first_village": "You founded a kingdom! Open the Ruler's Book (use it or press K) to give your citizens jobs.",
+  "message.architecturoverse.no_kingdom": "You have no kingdom yet. Craft a Scepter of Power and ring a village bell with it.",
+  "title.architecturoverse.captured": "Village captured!",
+  "title.architecturoverse.captured.sub": "Citizens sworn to you: %s",
+
+  "screen.architecturoverse.kingdom": "Kingdom",
+  "screen.architecturoverse.kingdom_of": "Kingdom of %s",
+  "screen.architecturoverse.summary": "Villages: %s  •  Citizens: %s",
+  "screen.architecturoverse.all_villages": "All (%s)",
+  "screen.architecturoverse.village": "Village %s (%s)",
+  "screen.architecturoverse.no_citizens": "No citizens in this village",
+  "screen.architecturoverse.page": "%s / %s",
+  "screen.architecturoverse.job_hint": "Click to change job",
+  "screen.architecturoverse.mode_hint": "Click to give an order: work / follow me / stay",
+  "screen.architecturoverse.hint": "Sneak + use a citizen to toggle follow / stay",
+
+  "key.architecturoverse.kingdom": "Open Ruler's Book",
+  "key.category.architecturoverse.main": "Architecturoverse"
+}

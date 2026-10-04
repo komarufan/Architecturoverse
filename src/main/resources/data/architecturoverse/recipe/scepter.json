@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "E": "minecraft:emerald",
+    "G": "minecraft:gold_ingot",
+    "S": "minecraft:stick"
+  },
+  "pattern": [
+    "E",
+    "G",
+    "S"
+  ],
+  "result": {
+    "id": "architecturoverse:scepter"
+  }
+}
