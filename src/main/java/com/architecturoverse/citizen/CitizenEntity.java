@@ -80,6 +80,8 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 	private static final EntityDataAccessor<Boolean> DATA_RESTING =
 		SynchedEntityData.defineId(CitizenEntity.class, EntityDataSerializers.BOOLEAN);
 	public static final float MAX_ENERGY = 100.0F;
+	/** One cell of the energy bar: a small square (U+25AA). */
+	private static final String ENERGY_CELL = "▪";
 	/** A full night's sleep lasts for about four minutes of work. */
 	private static final float TIRE_PER_WORK_TICK = MAX_ENERGY / (20 * 60 * 4);
 	/** Sleeping in a bed restores full energy in about a minute. */
@@ -250,8 +252,8 @@ public class CitizenEntity extends PathfinderMob implements InventoryCarrier {
 		if (isResting()) {
 			bar.append(Component.literal("Zzz ").withStyle(ChatFormatting.AQUA));
 		}
-		return bar.append(Component.literal("25A0".repeat(filled)).withStyle(color))
-			.append(Component.literal("25A0".repeat(10 - filled)).withStyle(ChatFormatting.DARK_GRAY));
+		return bar.append(Component.literal(ENERGY_CELL.repeat(filled)).withStyle(color))
+			.append(Component.literal(ENERGY_CELL.repeat(10 - filled)).withStyle(ChatFormatting.DARK_GRAY));
 	}
 
 	public boolean isSoldier() {
